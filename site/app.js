@@ -508,16 +508,18 @@ function renderBancos() {
   }).join('');
 
   const corpo = lista.map(r => `
-    <tr class="clicavel" data-linha="${r.linha}">
+    <tr class="clicavel ${r.implantado ? '' : 'em-estoque'}" data-linha="${r.linha}">
       <td>${selo(r)}</td>
       <td class="serie-cel">${esc(r.serie) || '<span class="vazio-cel">sem nº do banco</span>'}</td>
-      <td class="tag-cel">${r.tagLimpa ? esc(r.tagLimpa) : '<span class="vazio-cel">sem TAG</span>'}</td>
+      <td class="tag-cel">${r.tagLimpa
+        ? esc(r.tagLimpa)
+        : '<span class="pilula estoque">sem TAG</span>'}</td>
       <td><span class="pilula versao">${esc(r.versao) || '?'}</span></td>
       <td class="num">${r.baterias.length}</td>
       <td class="num">${dataBR(r.dataDesulf) || '<span class="vazio-cel">—</span>'}</td>
       <td class="num">${dataBR(r.dataImplant)
         || (r.implantado ? '<span class="vazio-cel">sem data</span>'
-                         : '<span class="vazio-cel">estoque</span>')}</td>
+                         : '<span class="cel-estoque">em estoque</span>')}</td>
       <td>${esc(r.tecMontagem) || '<span class="vazio-cel">—</span>'}</td>
       <td>${esc(r.tecConferencia) || '<span class="vazio-cel">—</span>'}</td>
       <td>${r.relatorio ? `<a href="${esc(r.relatorio)}" target="_blank" rel="noopener" title="Abrir relatório no SharePoint">PDF</a>` : '<span class="vazio-cel">—</span>'}</td>
@@ -690,7 +692,9 @@ function abrirDetalhe(linha) {
   const cartoes = `
     <div class="cartoes-topo">
       <div class="cartao-topo"><div class="rot">TAG Sirene</div>
-        <div class="val ${r.tagLimpa ? '' : 'ausente'}">${r.tagLimpa ? esc(r.tagLimpa) : 'sem TAG'}</div></div>
+        <div class="val ${r.tagLimpa ? '' : 'em-estoque'}">${r.tagLimpa
+          ? esc(r.tagLimpa)
+          : 'EM ESTOQUE'}</div></div>
       <div class="cartao-topo"><div class="rot">Nº de Série do Banco</div>
         <div class="val">${esc(r.serie) || '—'}</div></div>
       <div class="cartao-topo"><div class="rot">Versão</div>

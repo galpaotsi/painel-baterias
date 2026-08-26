@@ -500,6 +500,18 @@ thead th .seta { color: var(--laranja); font-size: 10px; }
 tbody td { padding: 8px 11px; border-bottom: 1px solid var(--borda); white-space: nowrap; }
 tbody tr:hover { background: var(--superficie-2); }
 tbody tr.clicavel { cursor: pointer; }
+
+/* Banco em estoque (sem TAG) é o que a equipe olha primeiro — ainda não foi
+   implantado. Antes ficava com a classe vazio-cel, cinza itálico, o estilo de
+   "informação ausente": exatamente o inverso da prioridade real. */
+tbody tr.em-estoque > td:first-child { box-shadow: inset 3px 0 0 var(--laranja); }
+/* rgba primeiro como reserva: se o navegador não tiver color-mix, ele ignora a
+   segunda linha e ainda assim pinta a faixa. */
+tbody tr.em-estoque { background: rgba(232, 115, 10, .06); }
+tbody tr.em-estoque { background: color-mix(in srgb, var(--laranja) 6%, transparent); }
+tbody tr.em-estoque:hover { background: rgba(232, 115, 10, .13); }
+tbody tr.em-estoque:hover { background: color-mix(in srgb, var(--laranja) 13%, transparent); }
+.cel-estoque { color: var(--laranja); font-weight: 700; }
 .serie-cel { font-family: var(--mono); font-weight: 600; font-size: 12.5px; }
 .tag-cel { font-weight: 600; }
 .vazio-cel { color: var(--texto-tenue); font-style: italic; font-size: 12px; }
@@ -518,6 +530,7 @@ tbody tr.clicavel { cursor: pointer; }
 .pilula.critico { background: var(--critico-bg); color: var(--critico); }
 .pilula.neutro  { background: var(--neutro-bg);  color: var(--texto-fraco); }
 .pilula.versao  { background: var(--teal-100);   color: var(--teal-700); font-family: var(--mono); }
+.pilula.estoque { background: var(--laranja);    color: #fff; }
 :root[data-tema="escuro"] .pilula.versao { color: #8fdcdc; }
 
 .ponto { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: baseline; }
@@ -612,6 +625,8 @@ tbody tr.clicavel { cursor: pointer; }
 :root[data-tema="escuro"] .cartao-topo .val { color: #7fd3d3; }
 .cartao-topo .val.pequeno { font-size: 15px; }
 .cartao-topo .val.ausente { color: var(--texto-tenue); font-style: italic; font-size: 15px; font-weight: 500; }
+/* Sem TAG não é dado faltando, é um estado: o banco está em estoque. */
+.cartao-topo .val.em-estoque { color: var(--laranja); font-size: 17px; letter-spacing: .02em; }
 .cartao-validade {
   margin-top: 5px;
   font-size: 11px;
