@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="pt-BR" data-tema="claro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Controle de Bancos de Bateria — Icatel Telemática</title>
+<link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+
+<header class="topo">
+  <div class="topo-linha">
+    <div class="marca">
+      Controle de Bancos de Bateria
+      <small>Icatel Telemática · Laboratório</small>
+    </div>
+    <div class="topo-dir">
+      <span class="selo-atualizado" id="atualizado"></span>
+      <button class="btn-tema" id="btn-tema">Escuro</button>
+    </div>
+  </div>
+  <nav class="abas" role="tablist">
+    <button class="aba" data-aba="painel"    role="tab" aria-selected="true">Painel</button>
+    <button class="aba" data-aba="bancos"    role="tab" aria-selected="false">Bancos <span class="cont" id="cont-bancos">0</span></button>
+    <button class="aba" data-aba="alertas"   role="tab" aria-selected="false" id="aba-alertas">Alertas <span class="cont" id="cont-alertas">0</span></button>
+    <button class="aba" data-aba="qualidade" role="tab" aria-selected="false">Qualidade dos dados</button>
+  </nav>
+</header>
+
+<main class="conteudo">
+
+  <!-- ============ PAINEL ============ -->
+  <section class="painel" data-painel="painel" role="tabpanel">
+    <div class="secao-titulo">Visão geral</div>
+    <div class="kpis" id="kpis"></div>
+
+    <div class="secao-titulo">Saúde da frota</div>
+    <div class="grade">
+      <div class="cartao bloco">
+        <h3>Distribuição da resistência interna</h3>
+        <p class="dica">Cada barra é uma faixa de resistência; a altura é quantas baterias caíram nela. As duas cores mostram por que não existe um limiar único — bancos de 4 e de 8 vivem em faixas diferentes.</p>
+        <div id="g-resist"></div>
+      </div>
+      <div class="cartao bloco">
+        <h3>Desulfatações por mês</h3>
+        <p class="dica">Volume de bancos processados ao longo do tempo, pela data de desulfatação.</p>
+        <div id="g-meses"></div>
+      </div>
+    </div>
+
+    <div class="secao-titulo">Equipe e composição</div>
+    <div class="grade">
+      <div class="cartao bloco">
+        <h3>Registros por técnico</h3>
+        <p class="dica">Contagem de participações como responsável de montagem e de conferência.</p>
+        <div id="g-tecnicos"></div>
+      </div>
+      <div class="cartao bloco">
+        <h3>Versões de banco</h3>
+        <p class="dica">G4 leva 8 baterias; G3 e Carretinha levam 4.</p>
+        <div id="g-versoes"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ BANCOS ============ -->
+  <section class="painel" data-painel="bancos" role="tabpanel" hidden>
+    <div class="cartao filtros">
+      <label class="busca">
+        <span class="lupa">⌕</span>
+        <input id="f-busca" type="search" placeholder="Buscar por série do banco, TAG, técnico ou série de bateria…" autocomplete="off">
+        <button class="limpar" id="limpar-busca" style="visibility:hidden" title="Limpar busca">×</button>
+      </label>
+      <select id="f-versao"></select>
+      <select id="f-tecnico"></select>
+      <select id="f-status">
+        <option value="">Toda saúde</option>
+        <option value="critico">Só críticos</option>
+        <option value="atencao">Só atenção</option>
+        <option value="ok">Só ok</option>
+        <option value="sem">Sem medição</option>
+      </select>
+      <select id="f-situacao">
+        <option value="">Toda situação</option>
+        <option value="implantado">Implantado em campo</option>
+        <option value="estoque">Em estoque</option>
+        <option value="sem-tag">Sem TAG de sirene</option>
+      </select>
+      <button class="btn-limpar-tudo" id="limpar-tudo">Limpar</button>
+      <span class="contagem" id="contagem"></span>
+    </div>
+    <div class="cartao" id="tabela-bancos"></div>
+    <div class="cartao legenda">
+      <span><span class="ponto critico"></span>crítico — fora da faixa, exige ação</span>
+      <span><span class="ponto atencao"></span>atenção — acompanhar na próxima ronda</span>
+      <span><span class="ponto ok"></span>ok — dentro da faixa</span>
+      <span><span class="ponto neutro"></span>sem medição registrada</span>
+      <span>Clique em qualquer linha para ver as baterias. Atalho: <strong>/</strong> foca a busca.</span>
+    </div>
+  </section>
+
+  <!-- ============ ALERTAS ============ -->
+  <section class="painel" data-painel="alertas" role="tabpanel" hidden>
+    <div class="secao-titulo">O que precisa de atenção <span class="contagem" id="contagem-alertas"></span></div>
+    <div id="lista-alertas"></div>
+    <div class="cartao legenda" style="margin-top:14px">
+      <span>Regra de resistência: cada bateria é comparada com a <strong>mediana das irmãs do próprio banco</strong> — assim a mesma regra serve pra G3, G4 e Carretinha. Os limiares ficam no topo de <strong>app.js</strong>, em <strong>CONFIG</strong>.</span>
+    </div>
+  </section>
+
+  <!-- ============ QUALIDADE ============ -->
+  <section class="painel" data-painel="qualidade" role="tabpanel" hidden>
+    <div class="secao-titulo">Buracos e inconsistências na planilha</div>
+    <p class="dica" style="margin:-4px 0 12px;color:var(--texto-fraco);font-size:13px">
+      Isto não é erro do site — é o que está faltando ou inconsistente na origem. Cada item aponta um ajuste possível no Forms. Clique num código pra abrir o registro.
+    </p>
+    <div id="lista-qualidade"></div>
+  </section>
+
+</main>
+
+<!-- ============ DETALHE ============ -->
+<div class="fundo-detalhe" id="detalhe" hidden role="dialog" aria-modal="true" aria-labelledby="gaveta-titulo">
+  <div class="gaveta" id="gaveta">
+    <div class="gaveta-topo">
+      <h2 id="gaveta-titulo"></h2>
+      <span id="gaveta-selo"></span>
+      <button class="fechar" id="fechar-detalhe">Fechar ✕</button>
+    </div>
+    <div class="gaveta-corpo" id="gaveta-corpo"></div>
+  </div>
+</div>
+
+<script src="senha.js"></script>
+<script src="dados.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

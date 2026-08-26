@@ -1,0 +1,86 @@
+# Converte a planilha e publica o painel no GitHub Pages.
+#
+# Dispara quando o Apps Script envia uma planilha nova, quando algum arquivo
+# do site muda, ou manualmente pelo botao "Run workflow".
+#
+# Roda em windows-latest de proposito: o converter.ps1 foi escrito e testado
+# no Windows PowerShell 5.1. Em Linux ele provavelmente rodaria, mas
+# "provavelmente" vira bug que so aparece daqui a duas semanas. Runner Windows
+# gasta o dobro de minutos e continua irrelevante -- isso usa ~10 min/mes
+# dos 2.000 gratuitos.
+
+name: Publicar painel
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'dados/**'
+      - 'site/**'
+      - 'converter.ps1'
+      - '.github/workflows/publicar.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Se chegarem duas planilhas seguidas, deixa a ultima terminar e cancela a do meio.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  construir:
+    runs-on: windows-latest
+    steps:
+      - name: Baixar o repositorio
+        uses: actions/checkout@v4
+
+      - name: Localizar a planilha
+        id: planilha
+        shell: powershell
+        run: |
+          $f = Get-ChildItem 'dados' -Filter *.xlsx -File -ErrorAction SilentlyContinue |
+               Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $f) {
+            Write-Host "::error::Nenhum .xlsx encontrado em dados/. O Apps Script ja enviou a planilha?"
+            exit 1
+          }
+          Write-Host "Planilha: $($f.Name) ($([math]::Round($f.Length/1KB,1)) KB)"
+          "caminho=$($f.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Converter para dados.js
+        shell: powershell
+        run: |
+          ./converter.ps1 -Xlsx '${{ steps.planilha.outputs.caminho }}' -Saida 'site/dados.js'
+          if (-not (Test-Path 'site/dados.js')) {
+            Write-Host "::error::O conversor rodou mas nao gerou site/dados.js"
+            exit 1
+          }
+          $kb = [math]::Round((Get-Item 'site/dados.js').Length / 1KB, 1)
+          Write-Host "site/dados.js gerado: $kb KB"
+          if ($kb -lt 5) {
+            Write-Host "::error::dados.js ficou pequeno demais ($kb KB) -- a planilha veio vazia?"
+            exit 1
+          }
+
+      - name: Configurar Pages
+        uses: actions/configure-pages@v5
+
+      - name: Empacotar o site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  publicar:
+    needs: construir
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Publicar no Pages
+        id: deploy
+        uses: actions/deploy-pages@v4

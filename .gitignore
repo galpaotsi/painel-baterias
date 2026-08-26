@@ -1,0 +1,8 @@
+# site/dados.js e GERADO pelo converter.ps1 (e pelo GitHub Actions a cada
+# publicacao). Nao versionar: evita conflito e commit inutil a cada rodada.
+site/dados.js
+
+# Especificos de uma maquina / de uma rodada
+caminho.local.txt
+converter.log
+.ultima-rodada
