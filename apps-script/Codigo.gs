@@ -195,16 +195,20 @@ function limpar_(todas, processada) {
 }
 
 // ---------------------------------------------------------------- gatilho
-// A cada 15 min, nao 1 hora: o Power Automate dispara em segundos quando
-// alguem preenche o Forms, entao um script que so olha a caixa de hora em
-// hora jogaria fora o ganho. 96 execucoes/dia fica muito abaixo das quotas
-// (20.000 UrlFetch/dia). O Apps Script so aceita 1, 5, 10, 15 ou 30 minutos.
+// 1 HORA e proposital, nao limitacao: foi o intervalo comunicado a equipe
+// ("sincroniza em ate 1h"), e alinhar expectativa vale mais que latencia.
+// O Power Automate tambem roda de hora em hora, entao os dois lados batem.
+//
+// Se um dia trocar o gatilho do Power Automate para disparar no envio do
+// Forms, troque aqui tambem para .everyMinutes(15) -- senao o e-mail sai em
+// segundos e fica parado ate o script olhar a caixa, jogando fora o ganho.
+// O Apps Script aceita apenas 1, 5, 10, 15 ou 30 minutos.
 function instalarGatilho() {
   ScriptApp.getProjectTriggers().forEach(function (t) {
     if (t.getHandlerFunction() === 'processar') ScriptApp.deleteTrigger(t);
   });
-  ScriptApp.newTrigger('processar').timeBased().everyMinutes(15).create();
-  Logger.log('Gatilho instalado: processar() a cada 15 minutos.');
+  ScriptApp.newTrigger('processar').timeBased().everyHours(1).create();
+  Logger.log('Gatilho instalado: processar() a cada 1 hora.');
 }
 
 function removerGatilho() {
