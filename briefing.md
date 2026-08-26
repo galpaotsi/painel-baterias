@@ -83,7 +83,31 @@ Excel, outros texto `25/05/2026`. O parser aceita os dois.
 - `0020714` B5, `0020715` B4, `0020797` B8 — tensão entre 12,54 e 12,68 V
 - `0020708` — amplitude de 0,61 mΩ entre as baterias
 
-## Automação (pendente de decisão)
+## Resultado (26/08/2026)
+
+**Entregue e rodando.** Site em `galpaotsi.github.io/painel-baterias`, atualizando
+sozinho a cada ~2h sem PC ligado, sem custo e sem envolvimento da TI.
+
+A seção abaixo ficou como registro do caminho percorrido — vários dos caminhos
+descritos nela foram testados e **fecharam**. O que ficou de pé está em
+`CLAUDE.md`, na tabela "Como o dado chega".
+
+**Correções que a operação trouxe depois da primeira entrega:**
+
+- **TAG define implantação**, não a data. Eu usava a data e marcava como "em
+  estoque" banco que estava em campo há meses
+- **Tensão baixa é abaixo de 12,30 V.** Meu chute de 12,50/12,70 gerava 8 falsos
+  positivos — a menor leitura do conjunto é 12,49 V
+- **Gráfico de distribuição trocado** por "Desequilíbrio por banco", que responde
+  "qual banco eu olho?" em vez de exigir leitura de escala
+
+Lição que vale pro próximo painel: **todo limiar que eu deduzo dos dados é chute
+até alguém da operação confirmar.** Os dois que eu inventei estavam errados; o
+único que veio dele mudou o resultado na hora.
+
+---
+
+## Automação — o caminho percorrido (histórico)
 
 Ver a conversa. Resumo do caminho recomendado:
 

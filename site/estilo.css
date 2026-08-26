@@ -191,6 +191,16 @@ button { cursor: pointer; }
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+/* Dado velho vira aviso visível no cabeçalho — cores próprias porque aqui o
+   fundo é o teal escuro, e os tokens de atenção/crítico somem nele. */
+.selo-atualizado.atencao,
+.selo-atualizado.critico {
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 20px;
+}
+.selo-atualizado.atencao { background: #f2b544; color: #3a2c0d; }
+.selo-atualizado.critico { background: #ff6a5e; color: #3d0f0b; }
 .btn-tema {
   background: rgba(255,255,255,.12);
   border: 1px solid rgba(255,255,255,.2);

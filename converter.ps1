@@ -237,8 +237,12 @@ foreach ($r in ($rows.Keys | Where-Object { $_ -gt 1 } | Sort-Object)) {
   }
 }
 
+# SEMPRE em UTC, formato ISO com o "Z" no fim. Rodando aqui o relogio e de
+# Brasilia; rodando no GitHub Actions e UTC -- gravar a hora local de cada um
+# fazia o site publicado mostrar 3h a frente, sem dizer que era outro fuso.
+# O navegador converte pro fuso de quem esta olhando.
 $payload = [PSCustomObject][ordered]@{
-  geradoEm  = (Get-Date).ToString('yyyy-MM-dd HH:mm')
+  geradoEm  = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
   origem    = (Split-Path $Xlsx -Leaf)
   registros = @($registros)
 }

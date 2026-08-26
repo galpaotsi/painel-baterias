@@ -860,6 +860,58 @@ function ligarEventos() {
 }
 
 /* ============================================================
+   Frescor do dado
+   ============================================================
+
+   O Power BI que este painel substituiu falhava de um jeito específico:
+   continuava abrindo bonito enquanto servia dado de sete meses atrás, e
+   ninguém percebia. Esta corrente pode falhar igual — se o Power Automate
+   parar, ou o Gmail mandar os e-mails pra spam, o site fica no ar mostrando
+   o último dado que recebeu, sem erro nenhum.
+
+   Por isso a idade do dado é exibida sempre, e vira aviso visível quando
+   passa do esperado. Falha silenciosa é o único tipo que não dá pra corrigir. */
+const HORAS_ATENCAO = 4;    // ciclo normal é ~2h; 4h já indica algo travado
+const HORAS_CRITICO = 24;
+
+function mostrarFrescor() {
+  const el = $('#atualizado');
+  if (!DB.geradoEm) { el.textContent = ''; return; }
+
+  // geradoEm vem em ISO UTC ("...Z"); o navegador converte pro fuso de quem
+  // está olhando. Versões antigas gravavam "YYYY-MM-DD HH:MM" sem fuso — nesse
+  // caso mostra como veio, sem tentar adivinhar de onde saiu.
+  const iso = /Z$|[+-]\d{2}:\d{2}$/.test(DB.geradoEm);
+  const d = new Date(iso ? DB.geradoEm : DB.geradoEm.replace(' ', 'T'));
+  if (isNaN(d)) { el.textContent = ''; return; }
+
+  const quando = d.toLocaleString('pt-BR', {
+    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+  });
+
+  if (!iso) { el.textContent = `Dados de ${quando}`; return; }
+
+  const horas = (Date.now() - d.getTime()) / 3600000;
+  let classe = '', prefixo = 'Dados de';
+
+  if (horas >= HORAS_CRITICO) {
+    classe = 'critico';
+    const dias = Math.floor(horas / 24);
+    prefixo = `⚠ Sem atualizar há ${dias} dia${dias > 1 ? 's' : ''} —`;
+  } else if (horas >= HORAS_ATENCAO) {
+    classe = 'atencao';
+    prefixo = `⚠ Sem atualizar há ${Math.floor(horas)}h —`;
+  }
+
+  el.className = 'selo-atualizado ' + classe;
+  el.textContent = `${prefixo} ${quando}`;
+  el.title = classe
+    ? 'A planilha deveria chegar a cada ~2h. Confira se o fluxo do Power Automate '
+      + 'está ativo e se os e-mails PAINEL-BATERIAS não caíram no spam.'
+    : 'Última vez que a planilha foi convertida e publicada.';
+}
+
+/* ============================================================
    Início
    ============================================================ */
 (function iniciar() {
@@ -879,9 +931,7 @@ function ligarEventos() {
   }
   $('#cont-bancos').textContent = DB.registros.length;
 
-  $('#atualizado').textContent = DB.geradoEm
-    ? `Dados de ${dataBR(DB.geradoEm.slice(0, 10))} · ${DB.geradoEm.slice(11)}`
-    : '';
+  mostrarFrescor();
 
   popularFiltros();
   ligarEventos();
