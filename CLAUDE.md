@@ -55,6 +55,12 @@ A data continua útil como informação, e a falta dela virou alerta próprio
 eram chute meu por conhecimento genérico de AGM e produziam **8 falsos positivos**
 num conjunto onde a menor leitura é 12,49 V.
 
+**Desulfatação vale 3 meses — e o prazo só corre para banco EM ESTOQUE.**
+Implantado não vence: fica ligado ao carregador da sirene. Aplicar a regra a
+todos os bancos marcava **34 dos 38** como vencidos e transformava o painel numa
+parede vermelha; restrita ao estoque sobram **7**, parados há 321 a 465 dias, que
+é problema de verdade. O filtro está em `preparar()`, na linha do `!r.implantado`.
+
 **Resistência: parâmetro oficial ainda não informado.** O critério atual está
 marcado como `PROVISÓRIO` no topo de `site/app.js`. Hoje compara cada bateria com
 a **mediana das irmãs do mesmo banco**, porque os dados têm duas populações
