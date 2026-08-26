@@ -36,7 +36,16 @@ const CONFIG = {
   spreadAtencao: 0.6,
   // temperatura de medição (°C) — fora disso a leitura perde comparabilidade
   tempMin: 15,
-  tempMax: 35
+  tempMax: 35,
+
+  // Regra da operação: a desulfatação vale por 3 meses.
+  // ATENÇÃO — aplicada a TODOS os bancos, que é o que foi dito literalmente.
+  // Com os dados de hoje isso marca 34 dos 38 registros como vencidos, quase
+  // todos em campo. Se a intenção era que o relógio só corra para banco EM
+  // ESTOQUE (o de campo fica no carregador da sirene), troque a linha marcada
+  // em preparar() e o número cai para 7. Confirmar com ele.
+  mesesValidadeDesulf: 3,
+  diasAvisoVencimento: 30
 };
 
 const ORDEM_STATUS = { critico: 3, atencao: 2, ok: 1, sem: 0 };
@@ -66,6 +75,25 @@ function mesRotulo(iso) {
   const m = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
   const p = String(iso).slice(0, 10).split('-');
   return `${m[parseInt(p[1], 10) - 1]}/${p[0].slice(2)}`;
+}
+
+// Soma meses a uma data ISO. new Date(y, m+n, d) já trata o estouro de mês:
+// 30/11 + 3 meses cairia em 30/02, e o JS normaliza pra 01/03 ou 02/03.
+function somarMeses(iso, n) {
+  const [a, m, d] = String(iso).slice(0, 10).split('-').map(Number);
+  const dt = new Date(a, m - 1 + n, d);
+  const p = x => String(x).padStart(2, '0');
+  return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())}`;
+}
+
+// Dias inteiros de hoje até a data. Compara só a parte da data (meia-noite
+// local dos dois lados), senão a hora atual faria o resultado oscilar em 1.
+function diasAte(iso) {
+  const [a, m, d] = String(iso).slice(0, 10).split('-').map(Number);
+  const alvo = new Date(a, m - 1, d);
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  return Math.round((alvo - hoje) / 86400000);
 }
 
 function mediana(arr) {
@@ -157,6 +185,21 @@ function preparar(bruto) {
     // banco que já estava em campo há meses.
     r.implantado = !!r.tagLimpa;
     r.implantSemData = r.implantado && !r.dataImplant;
+
+    // Validade da desulfatação. Para restringir a regra a banco em estoque,
+    // acrescente a condição "&& !r.implantado" no if abaixo.
+    if (r.dataDesulf) {
+      const v = somarMeses(r.dataDesulf, CONFIG.mesesValidadeDesulf);
+      r.venceEm = v;
+      r.diasParaVencer = diasAte(v);
+      r.vencido = r.diasParaVencer < 0;
+      r.vencendo = !r.vencido && r.diasParaVencer <= CONFIG.diasAvisoVencimento;
+    } else {
+      r.venceEm = null;
+      r.diasParaVencer = null;
+      r.vencido = false;
+      r.vencendo = false;
+    }
     return r;
   });
 
@@ -202,6 +245,8 @@ function filtrados() {
     if (estado.situacao === 'implantado' && !r.implantado) return false;
     if (estado.situacao === 'estoque' && r.implantado) return false;
     if (estado.situacao === 'sem-data' && !r.implantSemData) return false;
+    if (estado.situacao === 'vencido' && !r.vencido) return false;
+    if (estado.situacao === 'vencendo' && !r.vencendo) return false;
     if (!q) return true;
     const alvo = [
       r.serie, r.tag, r.versao, r.tecMontagem, r.tecConferencia,
@@ -235,6 +280,8 @@ function renderPainel() {
   const atencao = todasBat.filter(b => b.status === 'atencao');
   const bancosProblema = regs.filter(r => r.status === 'critico' || r.status === 'atencao');
   const implantados = regs.filter(r => r.implantado).length;
+  const vencendo = regs.filter(r => r.vencendo);
+  const vencidos = regs.filter(r => r.vencido);
 
   $('#kpis').innerHTML = [
     kpi('Bancos distintos', DB.porSerie.size, `${regs.length} registros no formulário`),
@@ -242,7 +289,8 @@ function renderPainel() {
     kpi('Implantados em campo', implantados, `${regs.length - implantados} em estoque, sem TAG`),
     kpi('Baterias críticas', criticas.length, criticas.length ? 'exigem troca ou reteste' : 'nenhuma fora de faixa', criticas.length ? 'ruim' : ''),
     kpi('Baterias em atenção', atencao.length, 'acompanhar na próxima ronda', atencao.length ? 'aviso' : ''),
-    kpi('Bancos a revisar', bancosProblema.length, 'com ao menos um alerta', bancosProblema.length ? 'aviso' : '')
+    kpi('Desulfatação vencendo', vencendo.length, `em até ${CONFIG.diasAvisoVencimento} dias`, vencendo.length ? 'aviso' : ''),
+    kpi('Desulfatação vencida', vencidos.length, `de ${CONFIG.mesesValidadeDesulf} meses de validade`, vencidos.length ? 'ruim' : '')
   ].join('');
 
   // desulfatações por mês
@@ -259,7 +307,7 @@ function renderPainel() {
   );
 
   // distribuição de resistência
-  $('#g-resist').innerHTML = desequilibrioPorBanco(regs);
+  $('#g-resist').innerHTML = validadeDesulfatacao(regs);
 
   // técnicos
   const porTec = new Map();
@@ -341,68 +389,74 @@ function barrasSVG(dados, titulo) {
   </svg></div>`;
 }
 
-function desequilibrioPorBanco(regs) {
-  // Num banco em serie a corrente e a mesma em todas as baterias, entao a de
-  // MAIOR resistencia e a que limita o conjunto inteiro. O numero absoluto nao
-  // serve de comparacao (G3/Carretinha vivem em ~2,2 mOhm e G4 em ~3,3), mas a
-  // DIFERENCA dentro do mesmo banco serve pra qualquer versao. Por isso o
-  // grafico mostra amplitude, nao valor bruto: banco parelho tem barra curta,
-  // banco com uma bateria destoando tem barra longa.
-  var br = function (v) { return (typeof v === 'number') ? v.toFixed(2).replace('.', ',') : '—'; };
+function validadeDesulfatacao(regs) {
+  // A desulfatação vale por CONFIG.mesesValidadeDesulf meses. O que interessa
+  // no painel é o que ainda dá pra evitar — então o topo é sempre "vence em
+  // breve", ordenado pelo mais urgente. Os já vencidos entram depois, contados
+  // e separados entre campo e estoque, porque a ação é diferente: banco em
+  // campo exige ir até a sirene; banco em estoque está aqui do lado.
+  var com = regs.filter(function (r) { return r.diasParaVencer !== null; });
+  if (!com.length) return '<p class="vazio">Nenhum registro tem data de desulfatação.</p>';
 
-  var itens = regs
-    .filter(function (r) { return r.spread !== null; })
-    .map(function (r) {
-      return {
-        linha: r.linha,
-        serie: r.serie || 'sem série',
-        tag: r.tagLimpa,
-        spread: r.spread,
-        med: r.medianaResist,
-        nBat: r.baterias.length,
-        status: r.spread >= CONFIG.spreadCritico ? 'critico'
-              : r.spread >= CONFIG.spreadAtencao ? 'atencao' : 'ok'
-      };
-    })
-    .sort(function (a, b) { return b.spread - a.spread; });
+  var vencendo = com.filter(function (r) { return r.vencendo; })
+                    .sort(function (a, b) { return a.diasParaVencer - b.diasParaVencer; });
+  var vencidos = com.filter(function (r) { return r.vencido; })
+                    .sort(function (a, b) { return a.diasParaVencer - b.diasParaVencer; });
+  var emDia = com.length - vencendo.length - vencidos.length;
 
-  if (!itens.length) return '<p class="vazio">Sem medições suficientes de resistência.</p>';
-
-  var MOSTRAR = 12;
-  var topo = itens.slice(0, MOSTRAR);
-  var resto = itens.length - topo.length;
-
-  // A escala nunca encolhe abaixo do limiar de atencao, senao um dia em que
-  // todos os bancos estao bons faria a maior barra parecer alarmante.
-  var maior = topo[0].spread;
-  var escala = Math.max(maior, CONFIG.spreadAtencao * 1.25);
-
-  var linhas = topo.map(function (i) {
-    var pct = Math.max(1.5, i.spread / escala * 100);
-    var rotulo = i.tag ? esc(i.serie) + ' <span class="deseq-tag">' + esc(i.tag) + '</span>'
-                       : esc(i.serie);
-    return '<button class="deseq-item" data-linha="' + i.linha + '"' +
-           ' title="Mediana do banco: ' + br(i.med) + ' mΩ · ' + i.nBat + ' baterias. Clique para abrir.">' +
-             '<span class="deseq-rot">' + rotulo + '</span>' +
-             '<span class="deseq-trilho">' +
-               '<span class="deseq-barra ' + i.status + '" style="width:' + pct.toFixed(1) + '%"></span>' +
-             '</span>' +
-             '<span class="deseq-val ' + i.status + '">' + br(i.spread) + '</span>' +
+  function linha(r, st) {
+    var dias = r.diasParaVencer;
+    var texto = st === 'critico'
+      ? 'venceu há ' + Math.abs(dias) + (Math.abs(dias) === 1 ? ' dia' : ' dias')
+      : (dias === 0 ? 'vence hoje' : 'em ' + dias + (dias === 1 ? ' dia' : ' dias'));
+    var onde = r.implantado
+      ? '<span class="val-onde campo">' + esc(r.tagLimpa) + '</span>'
+      : '<span class="val-onde estoque">estoque</span>';
+    return '<button class="val-item" data-linha="' + r.linha + '"' +
+           ' title="Desulfatado em ' + dataBR(r.dataDesulf) + ' · vence em ' + dataBR(r.venceEm) + '. Clique para abrir.">' +
+             '<span class="val-serie">' + esc(r.serie || 'sem nº') + '</span>' +
+             onde +
+             '<span class="val-data">' + dataBR(r.venceEm) + '</span>' +
+             '<span class="val-dias ' + st + '">' + texto + '</span>' +
            '</button>';
-  }).join('');
+  }
 
-  var equilibrados = itens.filter(function (i) { return i.status === 'ok'; }).length;
+  var html = '';
 
-  return '<div class="deseq">' + linhas + '</div>' +
-    '<div class="deseq-rodape">' +
-      '<span><span class="ponto critico"></span>a partir de ' + br(CONFIG.spreadCritico) + ' mΩ — desbalanceado</span>' +
-      '<span><span class="ponto atencao"></span>' + br(CONFIG.spreadAtencao) + ' a ' + br(CONFIG.spreadCritico) + ' mΩ — observar</span>' +
-      '<span><span class="ponto ok"></span>abaixo — equilibrado (' + equilibrados + ' de ' + itens.length + ' bancos)</span>' +
-      (resto > 0
-        ? '<span class="deseq-resto">Mostrando os ' + MOSTRAR + ' maiores. Os outros ' + resto +
-          ' ficam abaixo de ' + br(topo[topo.length - 1].spread) + ' mΩ.</span>'
-        : '') +
-    '</div>';
+  if (vencendo.length) {
+    html += '<div class="val-titulo atencao">Vence nos próximos ' +
+            CONFIG.diasAvisoVencimento + ' dias · ' + vencendo.length + '</div>' +
+            '<div class="val-lista">' +
+            vencendo.map(function (r) { return linha(r, 'atencao'); }).join('') +
+            '</div>';
+  } else {
+    html += '<div class="val-nada">Nenhuma desulfatação vence nos próximos ' +
+            CONFIG.diasAvisoVencimento + ' dias.</div>';
+  }
+
+  if (vencidos.length) {
+    var noCampo = vencidos.filter(function (r) { return r.implantado; }).length;
+    var noEstoque = vencidos.length - noCampo;
+    var MOSTRAR = 8;
+
+    html += '<div class="val-titulo critico">Já vencidas · ' + vencidos.length +
+            '<span class="val-quebra">' + noCampo + ' em campo · ' + noEstoque + ' em estoque</span>' +
+            '</div>' +
+            '<div class="val-lista">' +
+            vencidos.slice(0, MOSTRAR).map(function (r) { return linha(r, 'critico'); }).join('') +
+            '</div>';
+    if (vencidos.length > MOSTRAR) {
+      html += '<button class="val-ver-todos" data-filtro="vencido">' +
+              'Ver as ' + vencidos.length + ' na aba Bancos →</button>';
+    }
+  }
+
+  html += '<div class="val-rodape">' +
+          '<span><span class="ponto ok"></span>' + emDia + ' em dia</span>' +
+          '<span>Validade de ' + CONFIG.mesesValidadeDesulf + ' meses a partir da desulfatação.</span>' +
+          '</div>';
+
+  return html;
 }
 
 /* ============================================================
@@ -640,7 +694,13 @@ function abrirDetalhe(linha) {
       <div class="cartao-topo"><div class="rot">Versão</div>
         <div class="val">${esc(r.versao) || '—'}</div></div>
       <div class="cartao-topo"><div class="rot">Desulfatação</div>
-        <div class="val pequeno">${dataBR(r.dataDesulf) || '—'}</div></div>
+        <div class="val pequeno">${dataBR(r.dataDesulf) || '—'}</div>
+        ${r.venceEm ? `<div class="cartao-validade ${r.vencido ? 'critico' : r.vencendo ? 'atencao' : 'ok'}">${
+          r.vencido
+            ? `venceu há ${Math.abs(r.diasParaVencer)} d`
+            : r.diasParaVencer === 0 ? 'vence hoje'
+            : `vale mais ${r.diasParaVencer} d`
+        }</div>` : ''}</div>
       <div class="cartao-topo"><div class="rot">Implantação</div>
         <div class="val pequeno ${r.dataImplant ? '' : 'ausente'}">${dataBR(r.dataImplant)
           || (r.implantado ? 'em campo, sem data' : 'em estoque')}</div></div>
@@ -822,8 +882,16 @@ function ligarEventos() {
     if (el) abrirDetalhe(el.dataset.linha);
   });
 
-  // barras de desequilíbrio no painel — cada uma abre o banco
+  // cartão de validade no painel: item abre o banco, "ver todos" leva pra
+  // aba Bancos já filtrada
   $('#g-resist').addEventListener('click', e => {
+    const todos = e.target.closest('button[data-filtro]');
+    if (todos) {
+      estado.situacao = todos.dataset.filtro;
+      $('#f-situacao').value = todos.dataset.filtro;
+      trocarAba('bancos');
+      return;
+    }
     const el = e.target.closest('button[data-linha]');
     if (el) abrirDetalhe(el.dataset.linha);
   });
