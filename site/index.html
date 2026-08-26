@@ -38,8 +38,8 @@
     <div class="secao-titulo">Saúde da frota</div>
     <div class="grade">
       <div class="cartao bloco">
-        <h3>Distribuição da resistência interna</h3>
-        <p class="dica">Cada barra é uma faixa de resistência; a altura é quantas baterias caíram nela. As duas cores mostram por que não existe um limiar único — bancos de 4 e de 8 vivem em faixas diferentes.</p>
+        <h3>Desequilíbrio por banco</h3>
+        <p class="dica">Diferença de resistência entre a pior e a melhor bateria de cada banco. Num banco em série a corrente é a mesma em todas, então a de maior resistência limita o conjunto — <strong>quanto maior a barra, mais uma bateria destoa das irmãs</strong>. Clique para abrir o banco.</p>
         <div id="g-resist"></div>
       </div>
       <div class="cartao bloco">
@@ -83,9 +83,9 @@
       </select>
       <select id="f-situacao">
         <option value="">Toda situação</option>
-        <option value="implantado">Implantado em campo</option>
-        <option value="estoque">Em estoque</option>
-        <option value="sem-tag">Sem TAG de sirene</option>
+        <option value="implantado">Implantado em campo (com TAG)</option>
+        <option value="estoque">Em estoque (sem TAG)</option>
+        <option value="sem-data">Em campo, sem data de implantação</option>
       </select>
       <button class="btn-limpar-tudo" id="limpar-tudo">Limpar</button>
       <span class="contagem" id="contagem"></span>

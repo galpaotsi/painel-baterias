@@ -18,14 +18,19 @@
    O sinal que importa num banco em série é o ELO FRACO: a bateria que
    destoa das vizinhas é a que vai derrubar o conjunto. */
 const CONFIG = {
+  // PROVISÓRIO — deduzido dos dados, não é regra da operação.
+  // O parâmetro oficial de resistência ainda vai ser informado; quando vier,
+  // troque estes números (e provavelmente a própria lógica, se o critério
+  // dele for um valor absoluto em vez de comparação com o próprio banco).
   // resistência da bateria ÷ mediana do banco
   razaoResistCritico: 1.8,
   razaoResistAtencao: 1.35,
   // teto absoluto, independente do banco (mOhm)
   resistAbsolutoCritico: 8.0,
-  // tensão em repouso depois da desulfatação (V)
-  tensaoCritico: 12.50,
-  tensaoAtencao: 12.70,
+  // Tensão em repouso depois da desulfatação (V). Regra da operação:
+  // abaixo de 12,30 V o banco está descarregado. Acima disso está ok —
+  // não existe faixa intermediária, é uma linha só.
+  tensaoBaixa: 12.30,
   // amplitude (max-min) da resistência dentro do banco (mOhm)
   spreadCritico: 1.0,
   spreadAtencao: 0.6,
@@ -112,12 +117,9 @@ function preparar(bruto) {
 
       if (typeof b.tensaoDepois === 'number') {
         if (st === 'sem') st = 'ok';
-        if (b.tensaoDepois < CONFIG.tensaoCritico) {
+        if (b.tensaoDepois < CONFIG.tensaoBaixa) {
           st = 'critico';
-          motivos.push(`Tensão ${n2(b.tensaoDepois)} V abaixo de ${CONFIG.tensaoCritico} V`);
-        } else if (b.tensaoDepois < CONFIG.tensaoAtencao) {
-          if (st !== 'critico') st = 'atencao';
-          motivos.push(`Tensão ${n2(b.tensaoDepois)} V abaixo de ${CONFIG.tensaoAtencao} V`);
+          motivos.push(`Tensão ${n2(b.tensaoDepois)} V — abaixo de ${n2(CONFIG.tensaoBaixa)} V a bateria está descarregada`);
         }
       }
 
@@ -150,7 +152,12 @@ function preparar(bruto) {
     r.nAtencao = statusBat.filter(s => s === 'atencao').length;
     r.temAntes = r.baterias.some(b => typeof b.tensaoAntes === 'number' || typeof b.resistAntes === 'number');
     r.tagLimpa = r.tag && !/^sem\s*info$/i.test(r.tag) ? r.tag : null;
-    r.implantado = !!r.dataImplant;
+    // Regra da operação: banco COM TAG de sirene já está implantado; SEM TAG
+    // está em estoque. Quem manda é a TAG, não a data — a data de implantação
+    // falta em boa parte dos registros e usá-la marcava como "em estoque"
+    // banco que já estava em campo há meses.
+    r.implantado = !!r.tagLimpa;
+    r.implantSemData = r.implantado && !r.dataImplant;
     return r;
   });
 
@@ -195,7 +202,7 @@ function filtrados() {
     if (estado.tecnico && r.tecMontagem !== estado.tecnico && r.tecConferencia !== estado.tecnico) return false;
     if (estado.situacao === 'implantado' && !r.implantado) return false;
     if (estado.situacao === 'estoque' && r.implantado) return false;
-    if (estado.situacao === 'sem-tag' && r.tagLimpa) return false;
+    if (estado.situacao === 'sem-data' && !r.implantSemData) return false;
     if (!q) return true;
     const alvo = [
       r.serie, r.tag, r.versao, r.tecMontagem, r.tecConferencia,
@@ -233,7 +240,7 @@ function renderPainel() {
   $('#kpis').innerHTML = [
     kpi('Bancos distintos', DB.porSerie.size, `${regs.length} registros no formulário`),
     kpi('Baterias medidas', todasBat.length, `${todasBat.filter(b => b.serie).length} com nº de série`),
-    kpi('Bancos implantados', implantados, `${regs.length - implantados} sem data de implantação`),
+    kpi('Implantados em campo', implantados, `${regs.length - implantados} em estoque, sem TAG`),
     kpi('Baterias críticas', criticas.length, criticas.length ? 'exigem troca ou reteste' : 'nenhuma fora de faixa', criticas.length ? 'ruim' : ''),
     kpi('Baterias em atenção', atencao.length, 'acompanhar na próxima ronda', atencao.length ? 'aviso' : ''),
     kpi('Bancos a revisar', bancosProblema.length, 'com ao menos um alerta', bancosProblema.length ? 'aviso' : '')
@@ -253,7 +260,7 @@ function renderPainel() {
   );
 
   // distribuição de resistência
-  $('#g-resist').innerHTML = histogramaResist(regs);
+  $('#g-resist').innerHTML = desequilibrioPorBanco(regs);
 
   // técnicos
   const porTec = new Map();
@@ -335,69 +342,68 @@ function barrasSVG(dados, titulo) {
   </svg></div>`;
 }
 
-function histogramaResist(regs) {
-  const pts = [];
-  regs.forEach(r => r.baterias.forEach(b => {
-    if (typeof b.resistDepois === 'number') pts.push({ v: b.resistDepois, n: r.baterias.length, st: b.status });
-  }));
-  if (!pts.length) return '<p class="vazio">Sem medições de resistência.</p>';
+function desequilibrioPorBanco(regs) {
+  // Num banco em serie a corrente e a mesma em todas as baterias, entao a de
+  // MAIOR resistencia e a que limita o conjunto inteiro. O numero absoluto nao
+  // serve de comparacao (G3/Carretinha vivem em ~2,2 mOhm e G4 em ~3,3), mas a
+  // DIFERENCA dentro do mesmo banco serve pra qualquer versao. Por isso o
+  // grafico mostra amplitude, nao valor bruto: banco parelho tem barra curta,
+  // banco com uma bateria destoando tem barra longa.
+  var br = function (v) { return (typeof v === 'number') ? v.toFixed(2).replace('.', ',') : '—'; };
 
-  const dentro = pts.filter(p => p.v <= 6);
-  const fora = pts.filter(p => p.v > 6);
-  const larg = 520, alt = 200, L = 34, B = 34, T = 12, R = 10;
-  const min = 2, max = 4.2, nBins = 22, passo = (max - min) / nBins;
+  var itens = regs
+    .filter(function (r) { return r.spread !== null; })
+    .map(function (r) {
+      return {
+        linha: r.linha,
+        serie: r.serie || 'sem série',
+        tag: r.tagLimpa,
+        spread: r.spread,
+        med: r.medianaResist,
+        nBat: r.baterias.length,
+        status: r.spread >= CONFIG.spreadCritico ? 'critico'
+              : r.spread >= CONFIG.spreadAtencao ? 'atencao' : 'ok'
+      };
+    })
+    .sort(function (a, b) { return b.spread - a.spread; });
 
-  const bins = Array.from({ length: nBins }, () => ({ p4: 0, p8: 0 }));
-  dentro.forEach(p => {
-    let i = Math.floor((p.v - min) / passo);
-    if (i < 0) i = 0;
-    if (i >= nBins) i = nBins - 1;
-    bins[i][p.n <= 4 ? 'p4' : 'p8']++;
-  });
-  const maxB = Math.max(1, ...bins.map(b => b.p4 + b.p8));
-  const bw = (larg - L - R) / nBins;
-  const escY = v => T + (alt - T - B) * (1 - v / maxB);
-  const escX = v => L + (v - min) / (max - min) * (larg - L - R);
+  if (!itens.length) return '<p class="vazio">Sem medições suficientes de resistência.</p>';
 
-  const barras = bins.map((b, i) => {
-    const x = L + i * bw;
-    const h4 = (alt - B) - escY(b.p4);
-    const h8 = (alt - B) - escY(b.p8);
-    const faixa = `${(min + i * passo).toFixed(2)}–${(min + (i + 1) * passo).toFixed(2)} mΩ`;
-    let s = '';
-    if (b.p8) s += `<rect x="${x.toFixed(1)}" y="${(alt - B - h8).toFixed(1)}" width="${(bw - 1).toFixed(1)}" height="${h8.toFixed(1)}" fill="var(--teal-600)"><title>${faixa}: ${b.p8} baterias em banco de 8</title></rect>`;
-    if (b.p4) s += `<rect x="${x.toFixed(1)}" y="${(alt - B - h8 - h4).toFixed(1)}" width="${(bw - 1).toFixed(1)}" height="${h4.toFixed(1)}" fill="var(--laranja)"><title>${faixa}: ${b.p4} baterias em banco de 4</title></rect>`;
-    return s;
+  var MOSTRAR = 12;
+  var topo = itens.slice(0, MOSTRAR);
+  var resto = itens.length - topo.length;
+
+  // A escala nunca encolhe abaixo do limiar de atencao, senao um dia em que
+  // todos os bancos estao bons faria a maior barra parecer alarmante.
+  var maior = topo[0].spread;
+  var escala = Math.max(maior, CONFIG.spreadAtencao * 1.25);
+
+  var linhas = topo.map(function (i) {
+    var pct = Math.max(1.5, i.spread / escala * 100);
+    var rotulo = i.tag ? esc(i.serie) + ' <span class="deseq-tag">' + esc(i.tag) + '</span>'
+                       : esc(i.serie);
+    return '<button class="deseq-item" data-linha="' + i.linha + '"' +
+           ' title="Mediana do banco: ' + br(i.med) + ' mΩ · ' + i.nBat + ' baterias. Clique para abrir.">' +
+             '<span class="deseq-rot">' + rotulo + '</span>' +
+             '<span class="deseq-trilho">' +
+               '<span class="deseq-barra ' + i.status + '" style="width:' + pct.toFixed(1) + '%"></span>' +
+             '</span>' +
+             '<span class="deseq-val ' + i.status + '">' + br(i.spread) + '</span>' +
+           '</button>';
   }).join('');
 
-  const eixoX = [2, 2.5, 3, 3.5, 4].map(v =>
-    `<text x="${escX(v).toFixed(1)}" y="${alt - B + 14}" text-anchor="middle" font-size="10" fill="var(--texto-tenue)">${v.toFixed(1)}</text>`
-  ).join('');
+  var equilibrados = itens.filter(function (i) { return i.status === 'ok'; }).length;
 
-  const ticksY = [];
-  for (let i = 0; i <= 3; i++) {
-    const v = Math.round(maxB * i / 3);
-    ticksY.push(`<line x1="${L}" y1="${escY(v)}" x2="${larg - R}" y2="${escY(v)}" stroke="var(--borda)"/>
-      <text x="${L - 6}" y="${escY(v) + 3.5}" text-anchor="end" font-size="10" fill="var(--texto-tenue)">${v}</text>`);
-  }
-
-  const notaFora = fora.length
-    ? `<div class="aviso-faixa critico" style="margin:10px 0 0">
-         <div><strong>${fora.length} medição fora da escala do gráfico</strong>
-         ${fora.map(f => n2(f.v) + ' mΩ').join(', ')} — muito acima de qualquer outra leitura. Ver a aba Alertas.</div>
-       </div>` : '';
-
-  return `<div class="rolagem"><svg viewBox="0 0 ${larg} ${alt}" style="min-width:${larg}px" role="img" aria-label="Distribuição da resistência interna">
-      ${ticksY.join('')}
-      ${barras}
-      <line x1="${L}" y1="${alt - B}" x2="${larg - R}" y2="${alt - B}" stroke="var(--borda-forte)"/>
-      ${eixoX}
-      <text x="${(L + (larg - R)) / 2}" y="${alt - 4}" text-anchor="middle" font-size="10.5" fill="var(--texto-fraco)">resistência depois da desulfatação (mΩ)</text>
-    </svg></div>
-    <div class="legenda" style="padding:8px 0 0;margin:0">
-      <span><span class="ponto" style="background:var(--laranja)"></span>banco de 4 (G3 / Carretinha)</span>
-      <span><span class="ponto" style="background:var(--teal-600)"></span>banco de 8 (G4)</span>
-    </div>${notaFora}`;
+  return '<div class="deseq">' + linhas + '</div>' +
+    '<div class="deseq-rodape">' +
+      '<span><span class="ponto critico"></span>a partir de ' + br(CONFIG.spreadCritico) + ' mΩ — desbalanceado</span>' +
+      '<span><span class="ponto atencao"></span>' + br(CONFIG.spreadAtencao) + ' a ' + br(CONFIG.spreadCritico) + ' mΩ — observar</span>' +
+      '<span><span class="ponto ok"></span>abaixo — equilibrado (' + equilibrados + ' de ' + itens.length + ' bancos)</span>' +
+      (resto > 0
+        ? '<span class="deseq-resto">Mostrando os ' + MOSTRAR + ' maiores. Os outros ' + resto +
+          ' ficam abaixo de ' + br(topo[topo.length - 1].spread) + ' mΩ.</span>'
+        : '') +
+    '</div>';
 }
 
 /* ============================================================
@@ -443,7 +449,9 @@ function renderBancos() {
       <td><span class="pilula versao">${esc(r.versao) || '?'}</span></td>
       <td class="num">${r.baterias.length}</td>
       <td class="num">${dataBR(r.dataDesulf) || '<span class="vazio-cel">—</span>'}</td>
-      <td class="num">${dataBR(r.dataImplant) || '<span class="vazio-cel">estoque</span>'}</td>
+      <td class="num">${dataBR(r.dataImplant)
+        || (r.implantado ? '<span class="vazio-cel">sem data</span>'
+                         : '<span class="vazio-cel">estoque</span>')}</td>
       <td>${esc(r.tecMontagem) || '<span class="vazio-cel">—</span>'}</td>
       <td>${esc(r.tecConferencia) || '<span class="vazio-cel">—</span>'}</td>
       <td>${r.relatorio ? `<a href="${esc(r.relatorio)}" target="_blank" rel="noopener" title="Abrir relatório no SharePoint">PDF</a>` : '<span class="vazio-cel">—</span>'}</td>
@@ -545,18 +553,18 @@ function renderQualidade() {
       alvos: []
     },
     {
-      st: 'atencao',
-      t: 'Bancos sem TAG de sirene',
-      d: 'Sem TAG não se sabe onde o banco está instalado. Inclui os preenchidos como "Sem Info".',
+      st: 'info',
+      t: 'Bancos em estoque (sem TAG de sirene)',
+      d: 'Pela regra da operação, banco sem TAG ainda não foi implantado. Se algum destes já estiver em campo, falta preencher a TAG no formulário.',
       n: regs.filter(r => !r.tagLimpa).length,
       alvos: regs.filter(r => !r.tagLimpa).map(r => ({ rot: r.serie || '—', linha: r.linha }))
     },
     {
-      st: 'info',
-      t: 'Bancos sem data de implantação',
-      d: 'Podem estar em estoque aguardando instalação — ou ter sido instalados sem ninguém registrar a data.',
-      n: regs.filter(r => !r.implantado).length,
-      alvos: regs.filter(r => !r.implantado).map(r => ({ rot: r.serie || '—', linha: r.linha }))
+      st: 'atencao',
+      t: 'Implantados sem data de implantação',
+      d: 'Têm TAG de sirene — ou seja, estão em campo — mas ninguém registrou quando foram instalados. Sem a data não dá pra calcular há quanto tempo o banco está em operação, que é o que prevê a próxima manutenção.',
+      n: regs.filter(r => r.implantSemData).length,
+      alvos: regs.filter(r => r.implantSemData).map(r => ({ rot: r.serie || '—', linha: r.linha }))
     },
     {
       st: 'atencao',
@@ -624,7 +632,8 @@ function abrirDetalhe(linha) {
       <div class="cartao-topo"><div class="rot">Desulfatação</div>
         <div class="val pequeno">${dataBR(r.dataDesulf) || '—'}</div></div>
       <div class="cartao-topo"><div class="rot">Implantação</div>
-        <div class="val pequeno ${r.implantado ? '' : 'ausente'}">${dataBR(r.dataImplant) || 'em estoque'}</div></div>
+        <div class="val pequeno ${r.dataImplant ? '' : 'ausente'}">${dataBR(r.dataImplant)
+          || (r.implantado ? 'em campo, sem data' : 'em estoque')}</div></div>
       <div class="cartao-topo"><div class="rot">Relatório</div>${pdf}</div>
     </div>`;
 
@@ -642,9 +651,8 @@ function abrirDetalhe(linha) {
   // tabela de baterias — mesma leitura do BI (grupos Antes / Depois)
   const linhas = r.baterias.map(b => {
     const cls = s => s === 'critico' ? 'marc-critico' : s === 'atencao' ? 'marc-atencao' : '';
-    const stT = typeof b.tensaoDepois !== 'number' ? '' :
-      b.tensaoDepois < CONFIG.tensaoCritico ? 'critico' :
-      b.tensaoDepois < CONFIG.tensaoAtencao ? 'atencao' : '';
+    const stT = (typeof b.tensaoDepois === 'number' && b.tensaoDepois < CONFIG.tensaoBaixa)
+      ? 'critico' : '';
     const stR = typeof b.resistDepois !== 'number' ? '' :
       (b.resistDepois >= CONFIG.resistAbsolutoCritico || (b.razao && b.razao >= CONFIG.razaoResistCritico)) ? 'critico' :
       (b.razao && b.razao >= CONFIG.razaoResistAtencao) ? 'atencao' : '';
@@ -706,8 +714,6 @@ function abrirDetalhe(linha) {
       ${metaItem('Técnico — montagem', r.tecMontagem)}
       ${metaItem('Técnico — conferência', r.tecConferencia)}
       ${metaItem('Já foi desulfatado?', r.jaDesulfatado)}
-      ${metaItem('Mediana de resistência', r.medianaResist !== null ? n2(r.medianaResist) + ' mΩ' : null)}
-      ${metaItem('Amplitude no banco', r.spread !== null ? n2(r.spread) + ' mΩ' : null)}
       ${metaItem('Formulário preenchido por', r.preenchidoPor)}
       ${metaItem('Enviado em', r.fim ? r.fim.replace(' ', ' às ') : null)}
       ${metaItem('Linha na planilha', r.linha)}
@@ -809,6 +815,12 @@ function ligarEventos() {
 
   $('#lista-alertas').addEventListener('click', e => {
     const el = e.target.closest('[data-linha]');
+    if (el) abrirDetalhe(el.dataset.linha);
+  });
+
+  // barras de desequilíbrio no painel — cada uma abre o banco
+  $('#g-resist').addEventListener('click', e => {
+    const el = e.target.closest('button[data-linha]');
     if (el) abrirDetalhe(el.dataset.linha);
   });
 
