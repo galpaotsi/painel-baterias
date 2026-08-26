@@ -88,11 +88,19 @@ function processar() {
 // ---------------------------------------------------------------- auxiliares
 function lerConfig_() {
   var p = PropertiesService.getScriptProperties();
-  var cfg = {
-    token: p.getProperty('GITHUB_TOKEN'),
-    owner: p.getProperty('GITHUB_OWNER'),
-    repo:  p.getProperty('GITHUB_REPO')
-  };
+
+  // trim() nao e paranoia: copiar token de pagina web traz espaco ou quebra
+  // de linha junto o tempo todo, e o GitHub responde "Bad credentials" sem
+  // dizer que o problema e um caractere invisivel no fim.
+  // \s pega espaco/tab/quebra de linha; os \u sao os invisiveis que paginas
+  // web costumam colar junto (zero-width space, joiners e BOM).
+  function ler(nome) {
+    var v = p.getProperty(nome);
+    return v ? String(v).replace(/[\s\u200B\u200C\u200D\uFEFF]/g, "") : v;
+  }
+
+  var cfg = { token: ler('GITHUB_TOKEN'), owner: ler('GITHUB_OWNER'), repo: ler('GITHUB_REPO') };
+
   var faltando = [];
   if (!cfg.token) faltando.push('GITHUB_TOKEN');
   if (!cfg.owner) faltando.push('GITHUB_OWNER');
@@ -101,6 +109,14 @@ function lerConfig_() {
     throw new Error('Faltam propriedades do script: ' + faltando.join(', ') +
       '. Configuracoes do projeto -> Propriedades do script.');
   }
+
+  // Erra cedo e com mensagem util, em vez de deixar o GitHub devolver 401.
+  if (!/^(github_pat_|ghp_)/.test(cfg.token)) {
+    throw new Error('GITHUB_TOKEN nao parece um token do GitHub (deveria comecar com ' +
+      '"github_pat_" ou "ghp_"). Valor tem ' + cfg.token.length + ' caracteres e comeca com "' +
+      cfg.token.slice(0, 4) + '".');
+  }
+
   return cfg;
 }
 
