@@ -150,7 +150,6 @@ function preparar(bruto) {
     r.motivosBanco = motivosBanco;
     r.nCriticas = statusBat.filter(s => s === 'critico').length;
     r.nAtencao = statusBat.filter(s => s === 'atencao').length;
-    r.temAntes = r.baterias.some(b => typeof b.tensaoAntes === 'number' || typeof b.resistAntes === 'number');
     r.tagLimpa = r.tag && !/^sem\s*info$/i.test(r.tag) ? r.tag : null;
     // Regra da operação: banco COM TAG de sirene já está implantado; SEM TAG
     // está em estoque. Quem manda é a TAG, não a data — a data de implantação
@@ -411,7 +410,7 @@ function desequilibrioPorBanco(regs) {
    ============================================================ */
 const COLUNAS = [
   { k: 'status', r: 'Saúde', ord: true },
-  { k: 'serie', r: 'Nº de série', ord: true },
+  { k: 'serie', r: 'Nº série do banco', ord: true },
   { k: 'tag', r: 'TAG da sirene', ord: true },
   { k: 'versao', r: 'Versão', ord: true },
   { k: 'nBat', r: 'Baterias', ord: true },
@@ -427,6 +426,17 @@ function renderBancos() {
   $('#contagem').textContent = lista.length === DB.registros.length
     ? `${lista.length} registros`
     : `${lista.length} de ${DB.registros.length} registros`;
+
+  // O botão de limpar só ganha destaque quando existe algo pra limpar — assim
+  // ele também serve de aviso de que a lista está filtrada, que é a causa
+  // número um de alguém achar que um banco "sumiu".
+  const ativos = ['busca', 'versao', 'tecnico', 'status', 'situacao']
+    .filter(k => estado[k]).length;
+  const btn = $('#limpar-tudo');
+  btn.classList.toggle('ativo', ativos > 0);
+  btn.textContent = ativos > 0
+    ? `Limpar ${ativos} filtro${ativos > 1 ? 's' : ''} ✕`
+    : 'Limpar';
 
   if (!lista.length) {
     $('#tabela-bancos').innerHTML =
@@ -444,7 +454,7 @@ function renderBancos() {
   const corpo = lista.map(r => `
     <tr class="clicavel" data-linha="${r.linha}">
       <td>${selo(r)}</td>
-      <td class="serie-cel">${esc(r.serie) || '<span class="vazio-cel">sem série</span>'}</td>
+      <td class="serie-cel">${esc(r.serie) || '<span class="vazio-cel">sem nº do banco</span>'}</td>
       <td class="tag-cel">${r.tagLimpa ? esc(r.tagLimpa) : '<span class="vazio-cel">sem TAG</span>'}</td>
       <td><span class="pilula versao">${esc(r.versao) || '?'}</span></td>
       <td class="num">${r.baterias.length}</td>
@@ -534,7 +544,7 @@ function renderQualidade() {
     {
       st: 'atencao',
       t: 'Registros do mesmo banco físico',
-      d: 'Mesmo número de série lançado em mais de um registro (às vezes escrito diferente, com ou sem zeros à esquerda). O site já agrupa, mas vale conferir se é reteste ou lançamento duplicado.',
+      d: 'Mesmo nº de série de BANCO lançado em mais de um registro (às vezes escrito diferente, com ou sem zeros à esquerda). O site já agrupa, mas vale conferir se é reteste ou lançamento duplicado.',
       n: dups.reduce((a, d) => a + d.lista.length, 0),
       alvos: dups.flatMap(d => d.lista.map(r => ({ rot: r.serie || '—', linha: r.linha })))
     },
@@ -547,8 +557,8 @@ function renderQualidade() {
     },
     {
       st: 'atencao',
-      t: 'Baterias sem número de série',
-      d: 'Sem série não há rastreio: não dá pra saber se uma bateria ruim já tinha sido reprovada antes, nem acionar garantia do fabricante.',
+      t: 'Baterias sem nº de série',
+      d: 'Sem o nº de série da bateria não há rastreio: não dá pra saber se uma bateria ruim já tinha sido reprovada antes, nem acionar garantia do fabricante.',
       n: bat.filter(b => !b.serie).length,
       alvos: []
     },
@@ -639,12 +649,6 @@ function abrirDetalhe(linha) {
 
   const avisos = [];
   r.motivosBanco.forEach(m => avisos.push({ st: r.spread >= CONFIG.spreadCritico ? 'critico' : 'atencao', txt: m }));
-  if (!r.temAntes) {
-    avisos.push({
-      st: 'atencao',
-      txt: 'Este registro não tem medição <strong>antes</strong> da desulfatação — só o depois. Não dá pra demonstrar o ganho do processo.'
-    });
-  }
   const blocoAvisos = avisos.map(a =>
     `<div class="aviso-faixa ${a.st === 'critico' ? 'critico' : ''}"><div>${a.txt}</div></div>`).join('');
 
@@ -661,7 +665,7 @@ function abrirDetalhe(linha) {
       : `<td class="medida ${extra || ''}">${v}</td>`;
     return `<tr class="${b.status === 'critico' ? 'linha-critica' : ''}">
       <td class="pos">B${b.pos}</td>
-      <td class="serie-bat">${esc(b.serie) || '<span class="vazio-cel">sem série</span>'}</td>
+      <td class="serie-bat">${esc(b.serie) || '<span class="vazio-cel">sem nº da bateria</span>'}</td>
       <td class="medida sem" style="font-size:12.5px">${dataBR(b.fabricacao) || '—'}</td>
       ${cel(n2(b.tensaoAntes))}
       ${cel(n2(b.resistAntes))}
@@ -682,7 +686,7 @@ function abrirDetalhe(linha) {
           </tr>
           <tr>
             <th style="text-align:center">Pos.</th>
-            <th style="text-align:left">Nº de série</th>
+            <th style="text-align:left">Nº série da bateria</th>
             <th>Fabricação</th>
             <th>Tensão (V)</th>
             <th>Resist. (mΩ)</th>
