@@ -366,11 +366,6 @@ button { cursor: pointer; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.val-onde.campo { color: var(--texto-fraco); }
-.val-onde.estoque {
-  color: var(--texto-tenue);
-  font-style: italic;
-}
 .val-data {
   font-size: 11.5px;
   color: var(--texto-tenue);

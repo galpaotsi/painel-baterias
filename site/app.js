@@ -38,12 +38,9 @@ const CONFIG = {
   tempMin: 15,
   tempMax: 35,
 
-  // Regra da operação: a desulfatação vale por 3 meses.
-  // ATENÇÃO — aplicada a TODOS os bancos, que é o que foi dito literalmente.
-  // Com os dados de hoje isso marca 34 dos 38 registros como vencidos, quase
-  // todos em campo. Se a intenção era que o relógio só corra para banco EM
-  // ESTOQUE (o de campo fica no carregador da sirene), troque a linha marcada
-  // em preparar() e o número cai para 7. Confirmar com ele.
+  // Regra da operação: a desulfatação vale 3 meses, e o prazo só corre para
+  // banco EM ESTOQUE. Implantado não vence — fica ligado ao carregador da
+  // sirene. Ver o filtro em preparar().
   mesesValidadeDesulf: 3,
   diasAvisoVencimento: 30
 };
@@ -186,9 +183,11 @@ function preparar(bruto) {
     r.implantado = !!r.tagLimpa;
     r.implantSemData = r.implantado && !r.dataImplant;
 
-    // Validade da desulfatação. Para restringir a regra a banco em estoque,
-    // acrescente a condição "&& !r.implantado" no if abaixo.
-    if (r.dataDesulf) {
+    // Validade da desulfatação — SÓ para banco em estoque (confirmado com ele).
+    // Banco implantado fica ligado ao carregador da sirene, então o relógio não
+    // corre para ele. Sem o "!r.implantado" aqui, 34 dos 38 registros apareciam
+    // vencidos e o painel virava parede vermelha.
+    if (r.dataDesulf && !r.implantado) {
       const v = somarMeses(r.dataDesulf, CONFIG.mesesValidadeDesulf);
       r.venceEm = v;
       r.diasParaVencer = diasAte(v);
@@ -289,8 +288,8 @@ function renderPainel() {
     kpi('Implantados em campo', implantados, `${regs.length - implantados} em estoque, sem TAG`),
     kpi('Baterias críticas', criticas.length, criticas.length ? 'exigem troca ou reteste' : 'nenhuma fora de faixa', criticas.length ? 'ruim' : ''),
     kpi('Baterias em atenção', atencao.length, 'acompanhar na próxima ronda', atencao.length ? 'aviso' : ''),
-    kpi('Desulfatação vencendo', vencendo.length, `em até ${CONFIG.diasAvisoVencimento} dias`, vencendo.length ? 'aviso' : ''),
-    kpi('Desulfatação vencida', vencidos.length, `de ${CONFIG.mesesValidadeDesulf} meses de validade`, vencidos.length ? 'ruim' : '')
+    kpi('Estoque vencendo', vencendo.length, `desulfatação vence em até ${CONFIG.diasAvisoVencimento} dias`, vencendo.length ? 'aviso' : ''),
+    kpi('Estoque vencido', vencidos.length, 'desulfatação passou dos 3 meses', vencidos.length ? 'ruim' : '')
   ].join('');
 
   // desulfatações por mês
@@ -395,8 +394,12 @@ function validadeDesulfatacao(regs) {
   // breve", ordenado pelo mais urgente. Os já vencidos entram depois, contados
   // e separados entre campo e estoque, porque a ação é diferente: banco em
   // campo exige ir até a sirene; banco em estoque está aqui do lado.
+  // Só entram os que têm prazo correndo, ou seja, os em estoque. Banco
+  // implantado sai com diasParaVencer null lá em preparar().
   var com = regs.filter(function (r) { return r.diasParaVencer !== null; });
-  if (!com.length) return '<p class="vazio">Nenhum registro tem data de desulfatação.</p>';
+  if (!com.length) {
+    return '<div class="val-nada">Nenhum banco em estoque com data de desulfatação.</div>';
+  }
 
   var vencendo = com.filter(function (r) { return r.vencendo; })
                     .sort(function (a, b) { return a.diasParaVencer - b.diasParaVencer; });
@@ -409,14 +412,11 @@ function validadeDesulfatacao(regs) {
     var texto = st === 'critico'
       ? 'venceu há ' + Math.abs(dias) + (Math.abs(dias) === 1 ? ' dia' : ' dias')
       : (dias === 0 ? 'vence hoje' : 'em ' + dias + (dias === 1 ? ' dia' : ' dias'));
-    var onde = r.implantado
-      ? '<span class="val-onde campo">' + esc(r.tagLimpa) + '</span>'
-      : '<span class="val-onde estoque">estoque</span>';
     return '<button class="val-item" data-linha="' + r.linha + '"' +
            ' title="Desulfatado em ' + dataBR(r.dataDesulf) + ' · vence em ' + dataBR(r.venceEm) + '. Clique para abrir.">' +
              '<span class="val-serie">' + esc(r.serie || 'sem nº') + '</span>' +
-             onde +
-             '<span class="val-data">' + dataBR(r.venceEm) + '</span>' +
+             '<span class="val-onde">desulfatado ' + dataBR(r.dataDesulf) + '</span>' +
+             '<span class="val-data">vence ' + dataBR(r.venceEm) + '</span>' +
              '<span class="val-dias ' + st + '">' + texto + '</span>' +
            '</button>';
   }
@@ -435,12 +435,13 @@ function validadeDesulfatacao(regs) {
   }
 
   if (vencidos.length) {
-    var noCampo = vencidos.filter(function (r) { return r.implantado; }).length;
-    var noEstoque = vencidos.length - noCampo;
     var MOSTRAR = 8;
+    // O mais antigo primeiro: banco parado há mais tempo é o que precisa
+    // voltar pra bancada antes.
+    var maisVelho = Math.abs(vencidos[0].diasParaVencer);
 
     html += '<div class="val-titulo critico">Já vencidas · ' + vencidos.length +
-            '<span class="val-quebra">' + noCampo + ' em campo · ' + noEstoque + ' em estoque</span>' +
+            '<span class="val-quebra">o mais antigo está parado há ' + maisVelho + ' dias</span>' +
             '</div>' +
             '<div class="val-lista">' +
             vencidos.slice(0, MOSTRAR).map(function (r) { return linha(r, 'critico'); }).join('') +
@@ -453,7 +454,8 @@ function validadeDesulfatacao(regs) {
 
   html += '<div class="val-rodape">' +
           '<span><span class="ponto ok"></span>' + emDia + ' em dia</span>' +
-          '<span>Validade de ' + CONFIG.mesesValidadeDesulf + ' meses a partir da desulfatação.</span>' +
+          '<span>Validade de ' + CONFIG.mesesValidadeDesulf +
+          ' meses. Vale só para banco em estoque — implantado não vence.</span>' +
           '</div>';
 
   return html;
