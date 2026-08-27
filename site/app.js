@@ -7,33 +7,23 @@
    CONFIG — limiares de saúde. Ajuste aqui, sem mexer no resto.
    ============================================================
 
-   Por que a resistência é avaliada em RELAÇÃO ao próprio banco, e não
-   por um número fixo: os dados mostram duas populações bem separadas —
-   bancos de 4 baterias (G3 / Carretinha) vivem em ~2,1–2,4 mOhm e os de
-   8 baterias (G4) em ~2,7–3,9 mOhm. Um limiar fixo que serve pra um
-   acusa falso positivo no outro. Comparando cada bateria com a MEDIANA
-   das irmãs do mesmo banco, a regra se adapta sozinha — inclusive a
-   uma versão nova que ainda não existe hoje.
-
-   O sinal que importa num banco em série é o ELO FRACO: a bateria que
-   destoa das vizinhas é a que vai derrubar o conjunto. */
+   Resistência — regra da operação, teto fixo por versão do banco:
+   G4 não passa de 4,5 mOhm, G3 não passa de 2,6 mOhm. É uma linha só,
+   sem faixa intermediária de atenção. A comparação de cada bateria com
+   a mediana das irmãs e a amplitude entre elas, que moravam aqui antes,
+   eram dedução minha em cima dos dados — não eram regra dele, e saíram. */
 const CONFIG = {
-  // PROVISÓRIO — deduzido dos dados, não é regra da operação.
-  // O parâmetro oficial de resistência ainda vai ser informado; quando vier,
-  // troque estes números (e provavelmente a própria lógica, se o critério
-  // dele for um valor absoluto em vez de comparação com o próprio banco).
-  // resistência da bateria ÷ mediana do banco
-  razaoResistCritico: 1.8,
-  razaoResistAtencao: 1.35,
-  // teto absoluto, independente do banco (mOhm)
-  resistAbsolutoCritico: 8.0,
+  // Teto de resistência depois da desulfatação (mOhm), por versão do banco.
+  // Veio dele. Versão que não estiver neste mapa fica SEM avaliação de
+  // resistência — não deduzir limite (é o caso de "Carretinha" hoje).
+  limiteResist: {
+    G4: 4.5,
+    G3: 2.6
+  },
   // Tensão em repouso depois da desulfatação (V). Regra da operação:
   // abaixo de 12,30 V o banco está descarregado. Acima disso está ok —
   // não existe faixa intermediária, é uma linha só.
   tensaoBaixa: 12.30,
-  // amplitude (max-min) da resistência dentro do banco (mOhm)
-  spreadCritico: 1.0,
-  spreadAtencao: 0.6,
   // temperatura de medição (°C) — fora disso a leitura perde comparabilidade
   tempMin: 15,
   tempMax: 35,
@@ -93,13 +83,6 @@ function diasAte(iso) {
   return Math.round((alvo - hoje) / 86400000);
 }
 
-function mediana(arr) {
-  const v = arr.filter(x => typeof x === 'number').slice().sort((a, b) => a - b);
-  if (!v.length) return null;
-  const meio = Math.floor(v.length / 2);
-  return v.length % 2 ? v[meio] : (v[meio - 1] + v[meio]) / 2;
-}
-
 const n1 = v => (typeof v === 'number' ? v.toFixed(1) : null);
 const n2 = v => (typeof v === 'number' ? v.toFixed(2) : null);
 
@@ -113,12 +96,10 @@ function piorStatus(lista) {
 function preparar(bruto) {
   const registros = (bruto.registros || []).map(reg => {
     const r = Object.assign({}, reg);
-    const resistencias = r.baterias.map(b => b.resistDepois).filter(v => typeof v === 'number');
-    const med = mediana(resistencias);
-    r.medianaResist = med;
-    r.spread = resistencias.length >= 2
-      ? +(Math.max(...resistencias) - Math.min(...resistencias)).toFixed(2)
-      : null;
+    // Teto de resistência da versão do banco (G4 / G3). Versão que não estiver
+    // no mapa fica sem avaliação de resistência — ver CONFIG.limiteResist.
+    const limite = CONFIG.limiteResist[String(r.versao || '').trim().toUpperCase()] || null;
+    r.limiteResist = limite;
 
     r.baterias = r.baterias.map(b0 => {
       const b = Object.assign({}, b0);
@@ -127,16 +108,9 @@ function preparar(bruto) {
 
       if (typeof b.resistDepois === 'number') {
         st = 'ok';
-        b.razao = med ? +(b.resistDepois / med).toFixed(2) : null;
-        if (b.resistDepois >= CONFIG.resistAbsolutoCritico) {
+        if (limite && b.resistDepois > limite) {
           st = 'critico';
-          motivos.push(`Resistência ${n2(b.resistDepois)} mΩ acima do teto absoluto (${CONFIG.resistAbsolutoCritico} mΩ)`);
-        } else if (b.razao && b.razao >= CONFIG.razaoResistCritico) {
-          st = 'critico';
-          motivos.push(`Resistência ${b.razao}× a mediana do banco (${n2(med)} mΩ)`);
-        } else if (b.razao && b.razao >= CONFIG.razaoResistAtencao) {
-          st = 'atencao';
-          motivos.push(`Resistência ${b.razao}× a mediana do banco (${n2(med)} mΩ)`);
+          motivos.push(`Resistência ${n2(b.resistDepois)} mΩ — acima do limite de ${n2(limite)} mΩ do ${r.versao}`);
         }
       }
 
@@ -160,19 +134,9 @@ function preparar(bruto) {
     });
 
     const statusBat = r.baterias.map(b => b.status);
-    let st = piorStatus(statusBat);
-    const motivosBanco = [];
-    if (r.spread !== null) {
-      if (r.spread >= CONFIG.spreadCritico) {
-        st = 'critico';
-        motivosBanco.push(`Amplitude de ${n2(r.spread)} mΩ entre as baterias — banco desbalanceado`);
-      } else if (r.spread >= CONFIG.spreadAtencao) {
-        if (st !== 'critico') st = 'atencao';
-        motivosBanco.push(`Amplitude de ${n2(r.spread)} mΩ entre as baterias`);
-      }
-    }
-    r.status = st;
-    r.motivosBanco = motivosBanco;
+    // O status do banco é o pior status entre as baterias dele, e só. Não
+    // existe mais avaliação no nível do banco — a de amplitude era minha.
+    r.status = piorStatus(statusBat);
     r.nCriticas = statusBat.filter(s => s === 'critico').length;
     r.nAtencao = statusBat.filter(s => s === 'atencao').length;
     r.tagLimpa = r.tag && !/^sem\s*info$/i.test(r.tag) ? r.tag : null;
@@ -507,7 +471,7 @@ function renderBancos() {
     return `<th class="ord" data-ord="${c.k}" title="Ordenar por ${esc(c.r)}">${esc(c.r)} ${seta}</th>`;
   }).join('');
 
-  const corpo = lista.map(r => `
+  const linha = r => `
     <tr class="clicavel ${r.implantado ? '' : 'em-estoque'}" data-linha="${r.linha}">
       <td>${selo(r)}</td>
       <td class="serie-cel">${esc(r.serie) || '<span class="vazio-cel">sem nº do banco</span>'}</td>
@@ -523,7 +487,21 @@ function renderBancos() {
       <td>${esc(r.tecMontagem) || '<span class="vazio-cel">—</span>'}</td>
       <td>${esc(r.tecConferencia) || '<span class="vazio-cel">—</span>'}</td>
       <td>${r.relatorio ? `<a href="${esc(r.relatorio)}" target="_blank" rel="noopener" title="Abrir relatório no SharePoint">PDF</a>` : '<span class="vazio-cel">—</span>'}</td>
-    </tr>`).join('');
+    </tr>`;
+
+  // Em estoque em cima, implantados embaixo, com uma faixa separando os dois.
+  // A ordenação escolhida no cabeçalho continua valendo DENTRO de cada grupo —
+  // quem é estoque não sobe nem desce de grupo por causa da coluna clicada.
+  const estoque = lista.filter(r => !r.implantado);
+  const campo = lista.filter(r => r.implantado);
+  const faixa = (rot, n, cls) => `
+    <tr class="grupo-linha ${cls}"><td colspan="${COLUNAS.length}">
+      <span class="grupo-rot">${rot}</span><span class="grupo-qtd">${n}</span>
+    </td></tr>`;
+
+  const corpo =
+    (estoque.length ? faixa('Em estoque — ainda não implantados', estoque.length, 'estoque') + estoque.map(linha).join('') : '') +
+    (campo.length ? faixa('Implantados em campo', campo.length, 'campo') + campo.map(linha).join('') : '');
 
   $('#tabela-bancos').innerHTML =
     `<div class="rolagem"><table><thead><tr>${cab}</tr></thead><tbody>${corpo}</tbody></table></div>`;
@@ -545,13 +523,8 @@ function renderAlertas() {
     r.baterias.forEach(b => {
       if (b.status === 'critico' || b.status === 'atencao') itens.push({ r, b });
     });
-    if (r.motivosBanco.length) itens.push({ r, b: null });
   });
-  itens.sort((a, b) => {
-    const sa = a.b ? a.b.status : r0(a.r), sb = b.b ? b.b.status : r0(b.r);
-    return ORDEM_STATUS[sb] - ORDEM_STATUS[sa];
-  });
-  function r0(r) { return r.status; }
+  itens.sort((a, b) => ORDEM_STATUS[b.b.status] - ORDEM_STATUS[a.b.status]);
 
   $('#contagem-alertas').textContent = itens.length ? `${itens.length} pontos de atenção` : '';
 
@@ -562,11 +535,9 @@ function renderAlertas() {
   }
 
   $('#lista-alertas').innerHTML = `<div class="lista-quali">${itens.map(({ r, b }) => {
-    const st = b ? b.status : r.status;
-    const motivos = b ? b.motivos : r.motivosBanco;
-    const titulo = b
-      ? `Bateria ${b.pos} do banco ${esc(r.serie || '—')}${b.serie ? ` · ${esc(b.serie)}` : ''}`
-      : `Banco ${esc(r.serie || '—')} — conjunto desbalanceado`;
+    const st = b.status;
+    const motivos = b.motivos;
+    const titulo = `Bateria ${b.pos} do banco ${esc(r.serie || '—')}${b.serie ? ` · ${esc(b.serie)}` : ''}`;
     return `<div class="quali-item cartao" data-linha="${r.linha}" style="cursor:pointer">
       <div class="icone ${st}">${st === 'critico' ? '!' : '·'}</div>
       <div class="txt">
@@ -713,19 +684,19 @@ function abrirDetalhe(linha) {
       <div class="cartao-topo"><div class="rot">Relatório</div>${pdf}</div>
     </div>`;
 
-  const avisos = [];
-  r.motivosBanco.forEach(m => avisos.push({ st: r.spread >= CONFIG.spreadCritico ? 'critico' : 'atencao', txt: m }));
-  const blocoAvisos = avisos.map(a =>
-    `<div class="aviso-faixa ${a.st === 'critico' ? 'critico' : ''}"><div>${a.txt}</div></div>`).join('');
+  // Deixa explícito qual teto de resistência valeu para este banco — e avisa
+  // quando a versão não tem teto definido, em vez de fingir que está tudo ok.
+  const blocoAvisos = r.limiteResist
+    ? `<div class="aviso-faixa"><div>Limite de resistência do ${esc(r.versao)}: <strong>${n2(r.limiteResist)} mΩ</strong> por bateria.</div></div>`
+    : `<div class="aviso-faixa critico"><div>Versão <strong>${esc(r.versao) || '—'}</strong> não tem limite de resistência definido — as baterias deste banco não estão sendo avaliadas por resistência.</div></div>`;
 
   // tabela de baterias — mesma leitura do BI (grupos Antes / Depois)
   const linhas = r.baterias.map(b => {
     const cls = s => s === 'critico' ? 'marc-critico' : s === 'atencao' ? 'marc-atencao' : '';
     const stT = (typeof b.tensaoDepois === 'number' && b.tensaoDepois < CONFIG.tensaoBaixa)
       ? 'critico' : '';
-    const stR = typeof b.resistDepois !== 'number' ? '' :
-      (b.resistDepois >= CONFIG.resistAbsolutoCritico || (b.razao && b.razao >= CONFIG.razaoResistCritico)) ? 'critico' :
-      (b.razao && b.razao >= CONFIG.razaoResistAtencao) ? 'atencao' : '';
+    const stR = (typeof b.resistDepois === 'number' && r.limiteResist && b.resistDepois > r.limiteResist)
+      ? 'critico' : '';
     const cel = (v, extra) => v === null
       ? `<td class="medida sem ${extra || ''}">—</td>`
       : `<td class="medida ${extra || ''}">${v}</td>`;
@@ -997,8 +968,7 @@ function mostrarFrescor() {
     }
   } catch (_) {}
 
-  const criticos = DB.registros.flatMap(r => r.baterias).filter(b => b.status === 'critico').length
-    + DB.registros.filter(r => r.motivosBanco.length).length;
+  const criticos = DB.registros.flatMap(r => r.baterias).filter(b => b.status === 'critico').length;
   if (criticos) {
     $('#cont-alertas').textContent = criticos;
     $('#aba-alertas').classList.add('alerta');

@@ -40,6 +40,30 @@ qualquer empresa. Foi o que passou.
 **Antes de tentar "simplificar" isso, releia a tabela acima.** Cada linha custou
 uma rodada de teste.
 
+### O que acumula com o tempo (checado em 27/08/2026)
+
+Nada trava por volume. O que cresce, e quanto:
+
+- **Caixa do Gmail: não cresce.** O `limpar_()` manda pra lixeira tudo que
+  processou, menos a mais nova, e a busca é `newer_than:2d` limitada a 20
+  threads. Steady state: 1–2 e-mails na caixa e ~30 dias na lixeira (a lixeira
+  se esvazia sozinha), uns 28 MB contra 15 GB de cota. Irrelevante.
+- **Cotas do Apps Script: irrelevantes.** 2–3 `UrlFetch` por hora contra 20.000
+  por dia; execução de segundos contra 90 min/dia de gatilho.
+- **Histórico do git: esse cresce, e é o único que merece olho.** Cada commit
+  guarda o `.xlsx` inteiro (~40 KB) — zip não faz delta, então não tem
+  compressão salvando a pátria. O `enviarPraGitHub_` compara os **bytes** antes
+  de commitar, e isso segura muita coisa: em 18 horas de madrugada sem ninguém
+  mexer, zero commits. Mas segura só *byte* igual, não *dado* igual — em
+  27/08 saiu um commit às 16:07 UTC com dado idêntico ao das 15:07, só o
+  envelope do zip mudou porque alguém salvou a planilha. Conta: ~4 commits/dia
+  = ~58 MB/ano; travando em 24/dia = ~350 MB/ano. O GitHub reclama de repo
+  perto de 1 GB. Ou seja: anos até virar assunto, e quando virar, a saída é
+  espremer o histórico (`--orphan` + commit único), não redesenhar a ponte.
+- **Actions: não conta.** Repositório público tem minuto ilimitado (o
+  "~10 de 2.000/mês" escrito no workflow é a cota de repo privado). E o
+  workflow tem `contents: read` — não commita nada de volta.
+
 ---
 
 ## Regras da operação (vieram dele, não deduzir)
@@ -49,6 +73,10 @@ em estoque. **Não usar a data de implantação pra isso** — ela falta em boa 
 dos registros e marcava como "estoque" banco que já estava instalado há meses.
 A data continua útil como informação, e a falta dela virou alerta próprio
 ("Implantados sem data de implantação").
+
+Na aba **Bancos** os dois grupos vêm separados por faixa, estoque em cima
+(pedido dele, 27/08/2026). A ordenação escolhida no cabeçalho vale **dentro** de
+cada grupo — clicar numa coluna não mistura estoque com campo de novo.
 
 **Tensão: abaixo de 12,30 V a bateria está descarregada.** Acima disso está ok —
 é uma linha só, sem faixa intermediária. Os 12,50/12,70 que estavam aqui antes
@@ -61,15 +89,23 @@ todos os bancos marcava **34 dos 38** como vencidos e transformava o painel numa
 parede vermelha; restrita ao estoque sobram **7**, parados há 321 a 465 dias, que
 é problema de verdade. O filtro está em `preparar()`, na linha do `!r.implantado`.
 
-**Resistência: parâmetro oficial ainda não informado.** O critério atual está
-marcado como `PROVISÓRIO` no topo de `site/app.js`. Hoje compara cada bateria com
-a **mediana das irmãs do mesmo banco**, porque os dados têm duas populações
-separadas — G3/Carretinha em ~2,1–2,4 mΩ e G4 em ~2,7–3,9 mΩ. Um limiar fixo que
-serve pra uma família acusa falso positivo na outra.
+**Resistência: teto fixo por versão do banco. G4 até 4,5 mΩ, G3 até 2,6 mΩ.**
+Veio dele em 27/08/2026. Passou do limite é crítico, abaixo está ok — linha só,
+sem faixa de atenção. Fica em `CONFIG.limiteResist`, no topo de `site/app.js`.
 
-Quando o parâmetro vier, **perguntar antes**: é valor absoluto ou relativo ao
-banco? Considera temperatura? Se for absoluto e único, provavelmente repete o
-erro que a regra de tensão acabou de expor.
+O que existia aqui antes — comparar cada bateria com a mediana das irmãs e
+alertar por amplitude dentro do banco — era dedução minha em cima dos dados e
+**saiu inteiro**, junto com o aviso de "banco desbalanceado". O status do banco
+agora é só o pior status entre as baterias dele.
+
+**Carretinha ficou sem limite** — ele só informou G3 e G4. Versão fora do mapa
+não é avaliada por resistência, e o detalhe do banco diz isso na cara em vez de
+fingir que está ok. As 12 baterias de Carretinha medem 2,25–2,42 mΩ, então mesmo
+o limite do G3 não mudaria nada hoje; ainda assim, **não deduzir** — perguntar.
+
+Os limites batem com os dados: G3 vai até 2,42 e G4 até 3,95 (fora um 12,95 que
+era erro de digitação, corrigido na planilha em 27/08). Zero baterias acima do
+limite hoje.
 
 ---
 
@@ -125,7 +161,8 @@ tem override local (`credential.https://github.com.helper = manager`) pra pular 
 - **Senha do site** — está `galpaotsi`, igual ao nome do usuário do GitHub, em
   repositório público. Quem achar o repo adivinha. Ele foi avisado três vezes e
   ainda não decidiu trocar
-- **Parâmetro de resistência** — ver acima
+- **Limite de resistência da Carretinha** — G3 e G4 vieram; Carretinha não.
+  Enquanto não vier, essas 12 baterias não são avaliadas por resistência
 - **Intervalo de 1h é escolha, não limitação.** Foi o que ele comunicou à equipe.
   Se um dia trocar o gatilho do Power Automate pra disparar no envio do Forms,
   trocar o do Apps Script pra `everyMinutes(15)` junto — senão o ganho se perde
