@@ -145,18 +145,40 @@ function preparar(bruto) {
     // é a TAG em si, e o painel diz isso na cara em vez de fingir estoque.
     r.tagSemInfo = !!r.tag && /^sem\s*info$/i.test(r.tag);
     r.tagLimpa = r.tag && !r.tagSemInfo ? r.tag : null;
+    // Retorno ao galpão (colunas BT/BU, regra dele de 27/08/2026). Mesma
+    // lógica da TAG: o que conta é o campo estar preenchido, não o conteúdo —
+    // "sim", "devolvido com defeito" ou qualquer anotação valem igual.
+    r.retornado = !!r.retorno;
+    r.retornoSemData = r.retornado && !r.dataRetorno;
+
     // Regra da operação: banco com o campo TAG preenchido já está implantado;
     // campo vazio é estoque. Quem manda é a TAG, não a data — a data de
     // implantação falta em boa parte dos registros e usá-la marcava como
     // "em estoque" banco que já estava em campo há meses.
-    r.implantado = !!r.tag;
+    // O retorno tem a última palavra: quem voltou pro galpão não está mais em
+    // campo, mesmo mantendo a TAG — ela vira histórico de onde ele esteve.
+    r.implantado = !!r.tag && !r.retornado;
     r.implantSemData = r.implantado && !r.dataImplant;
+
+    // Três situações, nessa ordem de precedência: retornado ganha de campo, e
+    // campo ganha de estoque. Estoque é quem nunca saiu.
+    r.situacao = r.retornado ? 'retornado' : r.implantado ? 'campo' : 'estoque';
 
     // Validade da desulfatação — SÓ para banco em estoque (confirmado com ele).
     // Banco implantado fica ligado ao carregador da sirene, então o relógio não
     // corre para ele. Sem o "!r.implantado" aqui, 34 dos 38 registros apareciam
     // vencidos e o painel virava parede vermelha.
-    if (r.dataDesulf && !r.implantado) {
+    //
+    // Retornado também não corre (decisão dele, 27/08/2026): o prazo só volta a
+    // valer depois que alguém desulfatar DE NOVO, e "de novo" quer dizer uma
+    // desulfatação posterior ao retorno. Sem essa trava, banco que passou um ano
+    // em campo voltava pro galpão já vencido no dia seguinte à chegada — o
+    // vermelho não diria nada além de "esse banco é antigo".
+    // As datas são strings 'yyyy-MM-dd', então comparar com > funciona.
+    const desulfPosRetorno = r.retornado && r.dataRetorno && r.dataDesulf > r.dataRetorno;
+    const correPrazo = r.situacao === 'estoque' || desulfPosRetorno;
+
+    if (r.dataDesulf && correPrazo) {
       const v = somarMeses(r.dataDesulf, CONFIG.mesesValidadeDesulf);
       r.venceEm = v;
       r.diasParaVencer = diasAte(v);
@@ -210,14 +232,17 @@ function filtrados() {
     if (estado.versao && r.versao !== estado.versao) return false;
     if (estado.status && r.status !== estado.status) return false;
     if (estado.tecnico && r.tecMontagem !== estado.tecnico && r.tecConferencia !== estado.tecnico) return false;
-    if (estado.situacao === 'implantado' && !r.implantado) return false;
-    if (estado.situacao === 'estoque' && r.implantado) return false;
+    if (estado.situacao === 'implantado' && r.situacao !== 'campo') return false;
+    if (estado.situacao === 'estoque' && r.situacao !== 'estoque') return false;
+    if (estado.situacao === 'retornado' && !r.retornado) return false;
+    if (estado.situacao === 'retorno-sem-data' && !r.retornoSemData) return false;
     if (estado.situacao === 'sem-data' && !r.implantSemData) return false;
     if (estado.situacao === 'vencido' && !r.vencido) return false;
     if (estado.situacao === 'vencendo' && !r.vencendo) return false;
+    if (estado.situacao === 'em-dia' && !(r.diasParaVencer !== null && !r.vencido && !r.vencendo)) return false;
     if (!q) return true;
     const alvo = [
-      r.serie, r.tag, r.versao, r.tecMontagem, r.tecConferencia,
+      r.serie, r.tag, r.versao, r.tecMontagem, r.tecConferencia, r.retorno,
       ...r.baterias.map(b => b.serie)
     ].filter(Boolean).join(' ').toLowerCase();
     return alvo.includes(q);
@@ -247,14 +272,17 @@ function renderPainel() {
   const criticas = todasBat.filter(b => b.status === 'critico');
   const atencao = todasBat.filter(b => b.status === 'atencao');
   const bancosProblema = regs.filter(r => r.status === 'critico' || r.status === 'atencao');
-  const implantados = regs.filter(r => r.implantado).length;
+  const implantados = regs.filter(r => r.situacao === 'campo').length;
+  const emEstoque = regs.filter(r => r.situacao === 'estoque').length;
+  const retornados = regs.filter(r => r.retornado).length;
   const vencendo = regs.filter(r => r.vencendo);
   const vencidos = regs.filter(r => r.vencido);
 
   $('#kpis').innerHTML = [
     kpi('Bancos distintos', DB.porSerie.size, `${regs.length} registros no formulário`),
     kpi('Baterias medidas', todasBat.length, `${todasBat.filter(b => b.serie).length} com nº de série`),
-    kpi('Implantados em campo', implantados, `${regs.length - implantados} em estoque, sem TAG`),
+    kpi('Implantados em campo', implantados, `${emEstoque} em estoque, sem TAG`),
+    kpi('Retornados ao galpão', retornados, retornados ? 'voltaram de campo' : 'nenhum voltou de campo'),
     kpi('Baterias críticas', criticas.length, criticas.length ? 'exigem troca ou reteste' : 'nenhuma fora de faixa', criticas.length ? 'ruim' : ''),
     kpi('Baterias em atenção', atencao.length, 'acompanhar na próxima ronda', atencao.length ? 'aviso' : ''),
     kpi('Estoque vencendo', vencendo.length, `desulfatação vence em até ${CONFIG.diasAvisoVencimento} dias`, vencendo.length ? 'aviso' : ''),
@@ -374,7 +402,11 @@ function validadeDesulfatacao(regs) {
                     .sort(function (a, b) { return a.diasParaVencer - b.diasParaVencer; });
   var vencidos = com.filter(function (r) { return r.vencido; })
                     .sort(function (a, b) { return a.diasParaVencer - b.diasParaVencer; });
-  var emDia = com.length - vencendo.length - vencidos.length;
+  // "Em dia" deixou de ser só um número no rodapé e virou lista (pedido dele,
+  // 27/08/2026): ver de relance quanto tempo ainda sobra em cada banco vale
+  // mais que saber que "N estão ok". Ordenado pelo que vence primeiro.
+  var emDia = com.filter(function (r) { return !r.vencendo && !r.vencido; })
+                 .sort(function (a, b) { return a.diasParaVencer - b.diasParaVencer; });
 
   function linha(r, st) {
     var dias = r.diasParaVencer;
@@ -421,10 +453,25 @@ function validadeDesulfatacao(regs) {
     }
   }
 
+  if (emDia.length) {
+    var MOSTRAR_OK = 8;
+    html += '<div class="val-titulo ok">Em dia · ' + emDia.length +
+            '<span class="val-quebra">o primeiro vence em ' + emDia[0].diasParaVencer + ' dias</span>' +
+            '</div>' +
+            '<div class="val-lista">' +
+            emDia.slice(0, MOSTRAR_OK).map(function (r) { return linha(r, 'ok'); }).join('') +
+            '</div>';
+    if (emDia.length > MOSTRAR_OK) {
+      html += '<button class="val-ver-todos" data-filtro="em-dia">' +
+              'Ver os ' + emDia.length + ' na aba Bancos →</button>';
+    }
+  }
+
   html += '<div class="val-rodape">' +
-          '<span><span class="ponto ok"></span>' + emDia + ' em dia</span>' +
+          '<span>' + com.length + ' banco' + (com.length === 1 ? '' : 's') + ' com prazo correndo</span>' +
           '<span>Validade de ' + CONFIG.mesesValidadeDesulf +
-          ' meses. Vale só para banco em estoque — implantado não vence.</span>' +
+          ' meses. Vale só para banco em estoque — implantado não vence, e retornado ' +
+          'só volta a contar depois de desulfatar de novo.</span>' +
           '</div>';
 
   return html;
@@ -441,6 +488,7 @@ const COLUNAS = [
   { k: 'nBat', r: 'Baterias', ord: true },
   { k: 'dataDesulf', r: 'Desulfatação', ord: true },
   { k: 'dataImplant', r: 'Implantação', ord: true },
+  { k: 'dataRetorno', r: 'Retorno', ord: true },
   { k: 'tecMontagem', r: 'Montagem', ord: true },
   { k: 'tecConferencia', r: 'Conferência', ord: true },
   { k: 'relatorio', r: 'PDF', ord: false }
@@ -477,7 +525,7 @@ function renderBancos() {
   }).join('');
 
   const linha = r => `
-    <tr class="clicavel ${r.implantado ? '' : 'em-estoque'}" data-linha="${r.linha}">
+    <tr class="clicavel ${r.situacao === 'estoque' ? 'em-estoque' : r.situacao === 'retornado' ? 'voltou' : ''}" data-linha="${r.linha}">
       <td>${selo(r)}</td>
       <td class="serie-cel">${esc(r.serie) || '<span class="vazio-cel">sem nº do banco</span>'}</td>
       <td class="tag-cel">${r.tagLimpa
@@ -488,26 +536,34 @@ function renderBancos() {
       <td class="num">${r.baterias.length}</td>
       <td class="num">${dataBR(r.dataDesulf) || '<span class="vazio-cel">—</span>'}</td>
       <td class="num">${dataBR(r.dataImplant)
-        || (r.implantado ? '<span class="vazio-cel">sem data</span>'
-                         : '<span class="cel-estoque">em estoque</span>')}</td>
+        || (r.tag ? '<span class="vazio-cel">sem data</span>'
+                  : '<span class="cel-estoque">em estoque</span>')}</td>
+      <td class="num">${r.retornado
+        ? (dataBR(r.dataRetorno) || '<span class="vazio-cel">sem data</span>')
+        : '<span class="vazio-cel">—</span>'}</td>
       <td>${esc(r.tecMontagem) || '<span class="vazio-cel">—</span>'}</td>
       <td>${esc(r.tecConferencia) || '<span class="vazio-cel">—</span>'}</td>
       <td>${r.relatorio ? `<a href="${esc(r.relatorio)}" target="_blank" rel="noopener" title="Abrir relatório no SharePoint">PDF</a>` : '<span class="vazio-cel">—</span>'}</td>
     </tr>`;
 
-  // Em estoque em cima, implantados embaixo, com uma faixa separando os dois.
+  // Três faixas, na ordem em que interessam ao galpão: o que está parado ali
+  // em cima, o que voltou no meio, o que está em campo embaixo.
   // A ordenação escolhida no cabeçalho continua valendo DENTRO de cada grupo —
-  // quem é estoque não sobe nem desce de grupo por causa da coluna clicada.
-  const estoque = lista.filter(r => !r.implantado);
-  const campo = lista.filter(r => r.implantado);
+  // clicar numa coluna não mistura os grupos de novo.
+  const grupos = [
+    ['estoque',   'Em estoque — ainda não implantados', lista.filter(r => r.situacao === 'estoque')],
+    ['retornado', 'Retornados ao galpão',               lista.filter(r => r.situacao === 'retornado')],
+    ['campo',     'Implantados em campo',               lista.filter(r => r.situacao === 'campo')]
+  ];
   const faixa = (rot, n, cls) => `
     <tr class="grupo-linha ${cls}"><td colspan="${COLUNAS.length}">
       <span class="grupo-rot">${rot}</span><span class="grupo-qtd">${n}</span>
     </td></tr>`;
 
-  const corpo =
-    (estoque.length ? faixa('Em estoque — ainda não implantados', estoque.length, 'estoque') + estoque.map(linha).join('') : '') +
-    (campo.length ? faixa('Implantados em campo', campo.length, 'campo') + campo.map(linha).join('') : '');
+  const corpo = grupos
+    .filter(([, , rs]) => rs.length)
+    .map(([cls, rot, rs]) => faixa(rot, rs.length, cls) + rs.map(linha).join(''))
+    .join('');
 
   $('#tabela-bancos').innerHTML =
     `<div class="rolagem"><table><thead><tr>${cab}</tr></thead><tbody>${corpo}</tbody></table></div>`;
@@ -601,8 +657,23 @@ function renderQualidade() {
       st: 'info',
       t: 'Bancos em estoque (sem TAG de sirene)',
       d: 'Pela regra da operação, banco com o campo TAG em branco ainda não foi implantado. Se algum destes já estiver em campo, falta dar baixa no formulário — com a TAG, ou com "sem info" quando ninguém souber qual é.',
-      n: regs.filter(r => !r.implantado).length,
-      alvos: regs.filter(r => !r.implantado).map(r => ({ rot: r.serie || '—', linha: r.linha }))
+      n: regs.filter(r => r.situacao === 'estoque').length,
+      alvos: regs.filter(r => r.situacao === 'estoque').map(r => ({ rot: r.serie || '—', linha: r.linha }))
+    },
+    {
+      st: 'atencao',
+      t: 'Retornados sem data de retorno',
+      d: 'Voltaram pro galpão, mas ninguém registrou quando. Sem a data não dá pra saber se a desulfatação feita depois é mais nova que o retorno — e é isso que decide se o prazo de 3 meses volta a correr. Enquanto faltar, o banco fica fora da conta de vencimento.',
+      n: regs.filter(r => r.retornoSemData).length,
+      alvos: regs.filter(r => r.retornoSemData).map(r => ({ rot: r.serie || '—', linha: r.linha }))
+    },
+    {
+      st: 'atencao',
+      t: 'Retornados esperando desulfatação',
+      d: 'Voltaram de campo e a desulfatação registrada é anterior ao retorno — ou seja, ninguém desulfatou depois que o banco chegou. O prazo de 3 meses só volta a correr quando isso for feito e registrado no formulário.',
+      n: regs.filter(r => r.retornado && r.dataRetorno && !(r.dataDesulf > r.dataRetorno)).length,
+      alvos: regs.filter(r => r.retornado && r.dataRetorno && !(r.dataDesulf > r.dataRetorno))
+        .map(r => ({ rot: r.serie || '—', linha: r.linha }))
     },
     {
       st: 'atencao',
@@ -686,7 +757,13 @@ function abrirDetalhe(linha) {
         }</div>` : ''}</div>
       <div class="cartao-topo"><div class="rot">Implantação</div>
         <div class="val pequeno ${r.dataImplant ? '' : 'ausente'}">${dataBR(r.dataImplant)
-          || (r.implantado ? 'em campo, sem data' : 'em estoque')}</div></div>
+          || (r.tag ? 'sem data' : 'em estoque')}</div></div>
+      <div class="cartao-topo"><div class="rot">Retorno ao galpão</div>
+        <div class="val pequeno ${r.retornado ? '' : 'ausente'}">${r.retornado
+          ? (dataBR(r.dataRetorno) || 'voltou, sem data')
+          : 'não retornou'}</div>
+        ${r.retornado && r.retorno && !/^sim$/i.test(r.retorno)
+          ? `<div class="cartao-nota">${esc(r.retorno)}</div>` : ''}</div>
       <div class="cartao-topo"><div class="rot">Relatório</div>${pdf}</div>
     </div>`;
 

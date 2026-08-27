@@ -92,6 +92,58 @@ implantados sem data foram de 10 pra 13, e o estoque de 9 pra 6.
 branco. Depois dessa mudança o mesmo banco aparece nos dois grupos. Conserto é
 na origem, apagando a submissão velha do Forms, não no conversor.
 
+**Retorno ao galpão — colunas BT e BU** (decidido com ele em 27/08/2026, criado
+por ele na planilha depois disso). `BT` = retornou (vazio = não voltou;
+preenchido com qualquer coisa = voltou), `BU` = data do retorno. Mesma lógica da
+TAG: **conta o campo estar preenchido, não o conteúdo.**
+
+Duas decisões que vieram dele e não devem ser reinterpretadas:
+
+1. **Retornado sai de "implantado em campo" e vira grupo próprio.** A aba Bancos
+   tem três faixas agora — estoque (laranja), retornados (roxo), campo. A TAG
+   continua aparecendo no retornado, como histórico de onde ele esteve.
+2. **O prazo de desulfatação NÃO volta a correr no retorno.** Só volta quando
+   alguém desulfatar de novo — e "de novo" é `dataDesulf > dataRetorno`. Sem
+   essa trava, banco que passou um ano em campo voltava pro galpão já vermelho
+   no dia seguinte, e o vermelho não diria nada além de "esse banco é antigo".
+   Retornado sem data de retorno também não corre, e cai num alerta próprio.
+
+O conversor acha BT/BU **pelo texto do cabeçalho** (`AchaColuna`), com 71/72 como
+reserva. Nenhum cabeçalho atual casa com "retorn", então não há colisão. Foi
+feito assim porque o pior caso da posição fixa seria ler a coluna errada calado.
+
+**Aba "Saúde da frota" virou "Saúde do estoque"** e o bloco de validade ganhou um
+terceiro grupo, **"Em dia" em verde**, com a data de vencimento e quantos dias
+faltam — no mesmo formato dos outros dois (pedido dele, 27/08/2026). Antes "em
+dia" era só um número no rodapé. O bloco sempre mostrou só quem tem prazo
+correndo, que é o estoque; isso não mudou.
+
+Uma ressalva que ele deve saber: banco **em estoque nunca tem TAG** (é a
+definição). Por isso a lista de validade identifica pelo **nº de série**, não
+pela TAG — uma coluna de TAG ali seria vazia em todas as linhas.
+
+### Como isso foi testado (vale repetir quando mexer nas regras)
+
+Sem Node nem Python na máquina. O caminho que funciona é **Edge headless**:
+
+```
+msedge --headless --disable-gpu --virtual-time-budget=9000 --dump-dom <url>
+```
+
+Três armadilhas já pagas nesse teste:
+- `--headless=new` **não** escreve no stdout do PowerShell. Use o `--headless`
+  antigo com `Start-Process -RedirectStandardOutput`.
+- **A tranca de senha é CSS**, não só JS (`html:not([data-liberado])`). Tirar o
+  `senha.js` não basta pra tirar print — a página sai em branco. Tem que setar
+  `data-liberado` na mão.
+- **`.ps1` gravado sem BOM é lido como ANSI** pelo PowerShell 5.1, e um travessão
+  UTF-8 vira aspas no meio da string, quebrando o parse. Grave com BOM.
+
+O script que monta duas cópias (dado real e dado com retornos de mentira
+cobrindo os cinco casos da regra), injeta uma sonda e imprime faixas, KPIs,
+alertas e situação de cada registro está em `scratchpad/testar.ps1` da sessão de
+27/08. Vale reescrever se precisar — é meia hora que não volta.
+
 Na aba **Bancos** os dois grupos vêm separados por faixa, estoque em cima
 (pedido dele, 27/08/2026). A ordenação escolhida no cabeçalho vale **dentro** de
 cada grupo — clicar numa coluna não mistura estoque com campo de novo.

@@ -175,11 +175,32 @@ function Limpa([string]$s) {
 }
 
 # ---------- montagem dos registros ----------
+# Acha uma coluna pelo texto do cabecalho e so cai no indice fixo quando nao
+# encontra. Vale para as colunas de retorno, que sao novas: se um dia nascerem
+# em posicao diferente da combinada, o pior caso seria o painel ler a coluna
+# errada calado -- procurar pelo nome mata esse risco. Nenhum cabecalho atual
+# casa com "retorn", entao nao ha colisao (conferido em 27/08/2026).
+function AchaColuna([string]$inclui, [string]$exclui, [int]$reserva) {
+  if ($rows.ContainsKey(1)) {
+    foreach ($i in ($rows[1].Keys | Sort-Object)) {
+      $h = "$($rows[1][$i])"
+      if ($h -match $inclui -and ($exclui -eq '' -or $h -notmatch $exclui)) { return $i }
+    }
+  }
+  return $reserva
+}
+
 $COL = @{
   Id = 0; Inicio = 1; Fim = 2; Email = 3; Nome = 4; DataDesulf = 5; Serie = 6
   TecMontagem = 7; TecConferencia = 8; Tag = 10; DataImplant = 11
   JaDesulfatado = 12; Versao = 13; Relatorio = 70
 }
+# Retorno ao galpao: BT (71) e BU (72). BS (70, "Relatorio") e hoje a ultima
+# coluna com dado, entao BT/BU entram logo depois. Enquanto ele nao criar as
+# colunas, os dois indices vem vazios e todo mundo fica como "nao retornou".
+$COL.Retorno     = AchaColuna 'retorn'       'data' 71
+$COL.DataRetorno = AchaColuna 'data.*retorn' ''     72
+
 $BAT_BASE = 14   # 8 baterias x 7 campos, colunas O..BR
 
 $registros = @()
@@ -226,6 +247,9 @@ foreach ($r in ($rows.Keys | Where-Object { $_ -gt 1 } | Sort-Object)) {
     dataDesulf     = To-Data (&$g $COL.DataDesulf)
     dataImplant    = To-Data (&$g $COL.DataImplant)
     dataImplantRaw = Limpa (&$g $COL.DataImplant)
+    retorno        = Limpa (&$g $COL.Retorno)
+    dataRetorno    = To-Data (&$g $COL.DataRetorno)
+    dataRetornoRaw = Limpa (&$g $COL.DataRetorno)
     tecMontagem    = Resolve-Tecnico (&$g $COL.TecMontagem)
     tecConferencia = Resolve-Tecnico (&$g $COL.TecConferencia)
     preenchidoPor  = Resolve-Tecnico (&$g $COL.Nome)

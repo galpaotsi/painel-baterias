@@ -35,11 +35,11 @@
     <div class="secao-titulo">Visão geral</div>
     <div class="kpis" id="kpis"></div>
 
-    <div class="secao-titulo">Saúde da frota</div>
+    <div class="secao-titulo">Saúde do estoque</div>
     <div class="grade">
       <div class="cartao bloco">
         <h3>Validade da desulfatação — estoque</h3>
-        <p class="dica">A desulfatação vale <strong>3 meses</strong>, e o prazo só corre para banco <strong>em estoque</strong> — implantado fica no carregador da sirene e não vence. Primeiro o que ainda dá pra evitar, depois o que já passou. Clique para abrir o banco.</p>
+        <p class="dica">A desulfatação vale <strong>3 meses</strong>, e o prazo só corre para banco <strong>em estoque</strong> — implantado fica no carregador da sirene e não vence, e retornado só volta a contar depois de desulfatar de novo. Primeiro o que ainda dá pra evitar, depois o que já passou, por último o que está em dia. Clique para abrir o banco.</p>
         <div id="g-resist"></div>
       </div>
       <div class="cartao bloco">
@@ -85,7 +85,10 @@
         <option value="">Toda situação</option>
         <option value="implantado">Implantado em campo (com TAG)</option>
         <option value="estoque">Em estoque (sem TAG)</option>
+        <option value="retornado">Retornados ao galpão</option>
         <option value="sem-data">Em campo, sem data de implantação</option>
+        <option value="retorno-sem-data">Retornados sem data de retorno</option>
+        <option value="em-dia">Estoque com desulfatação em dia</option>
         <option value="vencido">Estoque com desulfatação vencida</option>
         <option value="vencendo">Estoque vencendo em 30 dias</option>
       </select>
@@ -99,6 +102,7 @@
       <span><span class="ponto ok"></span>ok — dentro da faixa</span>
       <span><span class="ponto neutro"></span>sem medição registrada</span>
       <span><span class="ponto" style="background:var(--laranja)"></span>linha laranja = <strong>em estoque</strong>, ainda não implantado</span>
+      <span><span class="ponto" style="background:var(--roxo)"></span>linha roxa = <strong>retornou ao galpão</strong>, voltou de campo</span>
       <span>Clique em qualquer linha para ver as baterias. Atalho: <strong>/</strong> foca a busca.</span>
     </div>
   </section>
