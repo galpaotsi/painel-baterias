@@ -139,12 +139,17 @@ function preparar(bruto) {
     r.status = piorStatus(statusBat);
     r.nCriticas = statusBat.filter(s => s === 'critico').length;
     r.nAtencao = statusBat.filter(s => s === 'atencao').length;
-    r.tagLimpa = r.tag && !/^sem\s*info$/i.test(r.tag) ? r.tag : null;
-    // Regra da operação: banco COM TAG de sirene já está implantado; SEM TAG
-    // está em estoque. Quem manda é a TAG, não a data — a data de implantação
-    // falta em boa parte dos registros e usá-la marcava como "em estoque"
-    // banco que já estava em campo há meses.
-    r.implantado = !!r.tagLimpa;
+    // "Sem Info" é preenchimento deliberado, não célula vazia: é como a equipe
+    // dá baixa em banco que já está em campo mas cuja TAG ninguém anotou na
+    // época (regra dele, 27/08/2026). Conta como implantado; o que ele não tem
+    // é a TAG em si, e o painel diz isso na cara em vez de fingir estoque.
+    r.tagSemInfo = !!r.tag && /^sem\s*info$/i.test(r.tag);
+    r.tagLimpa = r.tag && !r.tagSemInfo ? r.tag : null;
+    // Regra da operação: banco com o campo TAG preenchido já está implantado;
+    // campo vazio é estoque. Quem manda é a TAG, não a data — a data de
+    // implantação falta em boa parte dos registros e usá-la marcava como
+    // "em estoque" banco que já estava em campo há meses.
+    r.implantado = !!r.tag;
     r.implantSemData = r.implantado && !r.dataImplant;
 
     // Validade da desulfatação — SÓ para banco em estoque (confirmado com ele).
@@ -477,6 +482,7 @@ function renderBancos() {
       <td class="serie-cel">${esc(r.serie) || '<span class="vazio-cel">sem nº do banco</span>'}</td>
       <td class="tag-cel">${r.tagLimpa
         ? esc(r.tagLimpa)
+        : r.tagSemInfo ? '<span class="pilula neutro">sem info</span>'
         : '<span class="pilula estoque">sem TAG</span>'}</td>
       <td><span class="pilula versao">${esc(r.versao) || '?'}</span></td>
       <td class="num">${r.baterias.length}</td>
@@ -594,14 +600,14 @@ function renderQualidade() {
     {
       st: 'info',
       t: 'Bancos em estoque (sem TAG de sirene)',
-      d: 'Pela regra da operação, banco sem TAG ainda não foi implantado. Se algum destes já estiver em campo, falta preencher a TAG no formulário.',
-      n: regs.filter(r => !r.tagLimpa).length,
-      alvos: regs.filter(r => !r.tagLimpa).map(r => ({ rot: r.serie || '—', linha: r.linha }))
+      d: 'Pela regra da operação, banco com o campo TAG em branco ainda não foi implantado. Se algum destes já estiver em campo, falta dar baixa no formulário — com a TAG, ou com "sem info" quando ninguém souber qual é.',
+      n: regs.filter(r => !r.implantado).length,
+      alvos: regs.filter(r => !r.implantado).map(r => ({ rot: r.serie || '—', linha: r.linha }))
     },
     {
       st: 'atencao',
       t: 'Implantados sem data de implantação',
-      d: 'Têm TAG de sirene — ou seja, estão em campo — mas ninguém registrou quando foram instalados. Sem a data não dá pra calcular há quanto tempo o banco está em operação, que é o que prevê a próxima manutenção.',
+      d: 'Estão em campo — o campo TAG foi preenchido — mas ninguém registrou quando foram instalados. Sem a data não dá pra calcular há quanto tempo o banco está em operação, que é o que prevê a próxima manutenção.',
       n: regs.filter(r => r.implantSemData).length,
       alvos: regs.filter(r => r.implantSemData).map(r => ({ rot: r.serie || '—', linha: r.linha }))
     },
@@ -663,9 +669,9 @@ function abrirDetalhe(linha) {
   const cartoes = `
     <div class="cartoes-topo">
       <div class="cartao-topo"><div class="rot">TAG Sirene</div>
-        <div class="val ${r.tagLimpa ? '' : 'em-estoque'}">${r.tagLimpa
+        <div class="val ${r.tagLimpa ? '' : r.tagSemInfo ? 'ausente' : 'em-estoque'}">${r.tagLimpa
           ? esc(r.tagLimpa)
-          : 'EM ESTOQUE'}</div></div>
+          : r.tagSemInfo ? 'sem info' : 'EM ESTOQUE'}</div></div>
       <div class="cartao-topo"><div class="rot">Nº de Série do Banco</div>
         <div class="val">${esc(r.serie) || '—'}</div></div>
       <div class="cartao-topo"><div class="rot">Versão</div>

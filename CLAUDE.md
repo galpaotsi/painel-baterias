@@ -74,6 +74,24 @@ dos registros e marcava como "estoque" banco que já estava instalado há meses.
 A data continua útil como informação, e a falta dela virou alerta próprio
 ("Implantados sem data de implantação").
 
+**O que conta é o campo TAG estar preenchido, não o conteúdo dele.** Confirmado
+por ele em 27/08/2026: alguns bancos antigos foram pra campo sem ninguém dar
+baixa, e a equipe vai regularizar escrevendo **"sem info"** na TAG, porque a TAG
+real ninguém anotou na época. Isso é implantação válida — o painel mostra uma
+pílula neutra "sem info" na coluna e o banco fica no grupo de campo. O código
+faz `r.implantado = !!r.tag` e guarda `r.tagSemInfo` só pra decidir a exibição.
+Antes o `"Sem Info"` era filtrado como se fosse célula vazia e 3 registros caíam
+no estoque — o oposto da intenção.
+
+Consequência que veio junto, e é correta: implantado não corre prazo de
+desulfatação, então esses 3 saíram de "Estoque vencido" (**7 → 4**). Os
+implantados sem data foram de 10 pra 13, e o estoque de 9 pra 6.
+
+**Duplicata na planilha (aberta, não é bug do painel):** `0020730`/`20730` e
+`9216840` têm dois registros cada — um com `"Sem Info"` e outro com a TAG em
+branco. Depois dessa mudança o mesmo banco aparece nos dois grupos. Conserto é
+na origem, apagando a submissão velha do Forms, não no conversor.
+
 Na aba **Bancos** os dois grupos vêm separados por faixa, estoque em cima
 (pedido dele, 27/08/2026). A ordenação escolhida no cabeçalho vale **dentro** de
 cada grupo — clicar numa coluna não mistura estoque com campo de novo.
