@@ -1,5 +1,5 @@
-/* Controle de Bancos de Bateria — Icatel Telemática
-   Paleta herdada do Power BI atual (teal + laranja) pra não parecer outro sistema. */
+/* Controle de Bancos de Bateria â Icatel TelemÃ¡tica
+   Paleta herdada do Power BI atual (teal + laranja) pra nÃ£o parecer outro sistema. */
 
 :root {
   --teal-900: #073c3c;
@@ -9,8 +9,8 @@
   --teal-100: #d6e9e9;
   --laranja:  #e8730a;
   --laranja-claro: #f59b4a;
-  /* Terceiro estado (retornado ao galpão). Fora da paleta teal+laranja de
-     propósito: precisa não se confundir nem com estoque nem com saúde. */
+  /* Terceiro estado (retornado ao galpÃ£o). Fora da paleta teal+laranja de
+     propÃ³sito: precisa nÃ£o se confundir nem com estoque nem com saÃºde. */
   --roxo:     #6a4ba8;
 
   --bg:        #eef2f3;
@@ -157,7 +157,7 @@ button { cursor: pointer; }
 
 .num { font-variant-numeric: tabular-nums; }
 
-/* ---------------- cabeçalho ---------------- */
+/* ---------------- cabeÃ§alho ---------------- */
 .topo {
   background: linear-gradient(180deg, var(--teal-700), var(--teal-800));
   color: #fff;
@@ -195,8 +195,8 @@ button { cursor: pointer; }
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-/* Dado velho vira aviso visível no cabeçalho — cores próprias porque aqui o
-   fundo é o teal escuro, e os tokens de atenção/crítico somem nele. */
+/* Dado velho vira aviso visÃ­vel no cabeÃ§alho â cores prÃ³prias porque aqui o
+   fundo Ã© o teal escuro, e os tokens de atenÃ§Ã£o/crÃ­tico somem nele. */
 .selo-atualizado.atencao,
 .selo-atualizado.critico {
   font-weight: 700;
@@ -293,7 +293,7 @@ button { cursor: pointer; }
 .kpi.ruim .val { color: var(--critico); }
 .kpi.aviso .val { color: var(--atencao); }
 
-/* ---------------- grid de gráficos ---------------- */
+/* ---------------- grid de grÃ¡ficos ---------------- */
 .grade {
   display: grid;
   gap: 12px;
@@ -323,7 +323,7 @@ button { cursor: pointer; }
 .barra-preench { height: 100%; background: var(--teal-600); border-radius: 5px; }
 .barra-preench.laranja { background: var(--laranja); }
 
-/* ---------------- validade da desulfatação ---------------- */
+/* ---------------- validade da desulfataÃ§Ã£o ---------------- */
 .val-titulo {
   font-size: 11.5px;
   font-weight: 700;
@@ -420,6 +420,10 @@ button { cursor: pointer; }
 @media (max-width: 560px) {
   .val-item { grid-template-columns: auto 1fr auto; gap: 7px; }
   .val-data { display: none; }
+  /* O selo de estado ficou mais falante ("Sem alteracoes ha 2 dias · 27/08 20:08").
+     No celular nao cabe numa linha so — deixa quebrar em vez de empurrar o botao
+     de tema pra fora da tela. */
+  .selo-atualizado { white-space: normal; text-align: right; }
 }
 
 /* ---------------- filtros ---------------- */
@@ -471,8 +475,8 @@ button { cursor: pointer; }
 }
 .btn-limpar-tudo:hover { color: var(--texto); border-color: var(--texto-fraco); }
 
-/* Com filtro ativo o botão vira laranja sólido: além de limpar, ele avisa
-   que a lista está filtrada — a causa número um de achar que um banco sumiu. */
+/* Com filtro ativo o botÃ£o vira laranja sÃ³lido: alÃ©m de limpar, ele avisa
+   que a lista estÃ¡ filtrada â a causa nÃºmero um de achar que um banco sumiu. */
 .btn-limpar-tudo.ativo {
   background: var(--laranja);
   border-color: var(--laranja);
@@ -507,11 +511,11 @@ tbody td { padding: 8px 11px; border-bottom: 1px solid var(--borda); white-space
 tbody tr:hover { background: var(--superficie-2); }
 tbody tr.clicavel { cursor: pointer; }
 
-/* Banco em estoque (sem TAG) é o que a equipe olha primeiro — ainda não foi
-   implantado. Antes ficava com a classe vazio-cel, cinza itálico, o estilo de
-   "informação ausente": exatamente o inverso da prioridade real. */
+/* Banco em estoque (sem TAG) Ã© o que a equipe olha primeiro â ainda nÃ£o foi
+   implantado. Antes ficava com a classe vazio-cel, cinza itÃ¡lico, o estilo de
+   "informaÃ§Ã£o ausente": exatamente o inverso da prioridade real. */
 tbody tr.em-estoque > td:first-child { box-shadow: inset 3px 0 0 var(--laranja); }
-/* rgba primeiro como reserva: se o navegador não tiver color-mix, ele ignora a
+/* rgba primeiro como reserva: se o navegador nÃ£o tiver color-mix, ele ignora a
    segunda linha e ainda assim pinta a faixa. */
 tbody tr.em-estoque { background: rgba(232, 115, 10, .06); }
 tbody tr.em-estoque { background: color-mix(in srgb, var(--laranja) 6%, transparent); }
@@ -519,8 +523,8 @@ tbody tr.em-estoque:hover { background: rgba(232, 115, 10, .13); }
 tbody tr.em-estoque:hover { background: color-mix(in srgb, var(--laranja) 13%, transparent); }
 .cel-estoque { color: var(--laranja); font-weight: 700; }
 
-/* Retornado ao galpão é um terceiro estado, não um meio-termo entre estoque e
-   campo — por isso cor própria (roxo) em vez de um laranja mais claro, que se
+/* Retornado ao galpÃ£o Ã© um terceiro estado, nÃ£o um meio-termo entre estoque e
+   campo â por isso cor prÃ³pria (roxo) em vez de um laranja mais claro, que se
    leria como "quase estoque". */
 tbody tr.voltou > td:first-child { box-shadow: inset 3px 0 0 var(--roxo); }
 tbody tr.voltou { background: rgba(106, 75, 168, .06); }
@@ -528,9 +532,9 @@ tbody tr.voltou { background: color-mix(in srgb, var(--roxo) 6%, transparent); }
 tbody tr.voltou:hover { background: rgba(106, 75, 168, .13); }
 tbody tr.voltou:hover { background: color-mix(in srgb, var(--roxo) 13%, transparent); }
 
-/* Faixa que separa "em estoque" de "implantados em campo". É sticky logo
-   abaixo do cabeçalho (top: 36px ≈ altura do thead) pra que, rolando uma
-   lista longa, sempre dê pra saber em qual dos dois grupos você está. */
+/* Faixa que separa "em estoque" de "implantados em campo". Ã sticky logo
+   abaixo do cabeÃ§alho (top: 36px â altura do thead) pra que, rolando uma
+   lista longa, sempre dÃª pra saber em qual dos dois grupos vocÃª estÃ¡. */
 tbody tr.grupo-linha td {
   background: var(--superficie-2);
   border-top: 2px solid var(--borda-forte);
@@ -565,7 +569,7 @@ tbody tr.grupo-linha.retornado .grupo-rot { color: var(--roxo); }
 .tag-cel { font-weight: 600; }
 .vazio-cel { color: var(--texto-tenue); font-style: italic; font-size: 12px; }
 
-/* ---------------- pílulas / selos ---------------- */
+/* ---------------- pÃ­lulas / selos ---------------- */
 .pilula {
   display: inline-block;
   padding: 2px 8px;
@@ -641,7 +645,7 @@ tbody tr.grupo-linha.retornado .grupo-rot { color: var(--roxo); }
 .gaveta-topo .fechar:hover { background: rgba(255,255,255,.25); }
 .gaveta-corpo { padding: 16px 20px 50px; }
 
-/* cartões grandes do topo do detalhe — espelham o BI atual */
+/* cartÃµes grandes do topo do detalhe â espelham o BI atual */
 .cartoes-topo {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
@@ -674,10 +678,10 @@ tbody tr.grupo-linha.retornado .grupo-rot { color: var(--roxo); }
 :root[data-tema="escuro"] .cartao-topo .val { color: #7fd3d3; }
 .cartao-topo .val.pequeno { font-size: 15px; }
 .cartao-topo .val.ausente { color: var(--texto-tenue); font-style: italic; font-size: 15px; font-weight: 500; }
-/* Sem TAG não é dado faltando, é um estado: o banco está em estoque. */
+/* Sem TAG nÃ£o Ã© dado faltando, Ã© um estado: o banco estÃ¡ em estoque. */
 .cartao-topo .val.em-estoque { color: var(--laranja); font-size: 17px; letter-spacing: .02em; }
-/* Anotação livre do retorno ("devolvido com defeito", etc). Só aparece quando
-   a equipe escreveu algo além de "sim" — senão seria eco do card acima. */
+/* AnotaÃ§Ã£o livre do retorno ("devolvido com defeito", etc). SÃ³ aparece quando
+   a equipe escreveu algo alÃ©m de "sim" â senÃ£o seria eco do card acima. */
 .cartao-nota {
   margin-top: 5px;
   font-size: 11.5px;
@@ -724,11 +728,11 @@ tbody tr.grupo-linha.retornado .grupo-rot { color: var(--roxo); }
 :root[data-tema="escuro"] .tab-bat th.grupo { color: #b7e2e2; }
 .tab-bat th.grupo.antes  { background: var(--neutro-bg); }
 /* B1..B8 fica congelada ao arrastar a tabela pro lado: sem isso, no celular
-   você rola até "Resist. Depois" e não sabe mais de qual bateria é o número.
-   Precisa de fundo opaco e z-index, senão as células passam por baixo. */
-/* tr:nth-child(2) e não th:first-child: a primeira linha do cabeçalho é a
-   dos grupos Antes/Depois, e a célula inicial dela tem colspan="3" — fixar
-   aquela congelaria três colunas e desalinharia tudo. */
+   vocÃª rola atÃ© "Resist. Depois" e nÃ£o sabe mais de qual bateria Ã© o nÃºmero.
+   Precisa de fundo opaco e z-index, senÃ£o as cÃ©lulas passam por baixo. */
+/* tr:nth-child(2) e nÃ£o th:first-child: a primeira linha do cabeÃ§alho Ã© a
+   dos grupos Antes/Depois, e a cÃ©lula inicial dela tem colspan="3" â fixar
+   aquela congelaria trÃªs colunas e desalinharia tudo. */
 .tab-bat td.pos,
 .tab-bat thead tr:nth-child(2) th:first-child {
   position: sticky;
@@ -747,7 +751,7 @@ tbody tr.grupo-linha.retornado .grupo-rot { color: var(--roxo); }
   background: var(--superficie-2);
   box-shadow: 1px 0 0 var(--borda-forte);
 }
-/* a linha crítica pinta a coluna fixa — repete aqui pra não perder a cor
+/* a linha crÃ­tica pinta a coluna fixa â repete aqui pra nÃ£o perder a cor
    quando o sticky reaplica o fundo */
 .tab-bat tr.linha-critica td.pos { background: var(--critico-bg); }
 :root[data-tema="escuro"] .tab-bat td.pos { color: #7fd3d3; }
@@ -794,7 +798,7 @@ tbody tr.grupo-linha.retornado .grupo-rot { color: var(--roxo); }
 .meta-item .val { font-size: 13.5px; margin-top: 2px; }
 .meta-item .val.ausente { color: var(--texto-tenue); font-style: italic; }
 
-/* histórico do mesmo banco */
+/* histÃ³rico do mesmo banco */
 .hist-lista { display: flex; flex-direction: column; gap: 8px; }
 .hist-item {
   display: flex; gap: 12px; align-items: center;

@@ -988,55 +988,128 @@ function ligarEventos() {
 }
 
 /* ============================================================
-   Frescor do dado
+   Estado da corrente
    ============================================================
 
    O Power BI que este painel substituiu falhava de um jeito específico:
    continuava abrindo bonito enquanto servia dado de sete meses atrás, e
-   ninguém percebia. Esta corrente pode falhar igual — se o Power Automate
-   parar, ou o Gmail mandar os e-mails pra spam, o site fica no ar mostrando
-   o último dado que recebeu, sem erro nenhum.
+   ninguém percebia. Esta corrente pode falhar igual, e em três lugares:
 
-   Por isso a idade do dado é exibida sempre, e vira aviso visível quando
-   passa do esperado. Falha silenciosa é o único tipo que não dá pra corrigir. */
-const HORAS_ATENCAO = 4;    // ciclo normal é ~2h; 4h já indica algo travado
-const HORAS_CRITICO = 24;
+     Power Automate → e-mail    para: a planilha nunca chega
+     Apps Script    → commit    para: nada entra no GitHub
+     GitHub Actions → Pages     para: entra e não publica
 
-function mostrarFrescor() {
-  const el = $('#atualizado');
-  if (!DB.geradoEm) { el.textContent = ''; return; }
+   Nenhum dos três avisa ninguém. Por isso a ponte grava um batimento a cada
+   rodada em ultima-checagem.json, no branch `ponte` — fora do caminho que
+   dispara o workflow, então não rebuilda o site nem enche o histórico do
+   main. O selo lê esse arquivo pra dizer QUAL metade parou.
 
-  // geradoEm vem em ISO UTC ("...Z"); o navegador converte pro fuso de quem
-  // está olhando. Versões antigas gravavam "YYYY-MM-DD HH:MM" sem fuso — nesse
-  // caso mostra como veio, sem tentar adivinhar de onde saiu.
-  const iso = /Z$|[+-]\d{2}:\d{2}$/.test(DB.geradoEm);
-  const d = new Date(iso ? DB.geradoEm : DB.geradoEm.replace(' ', 'T'));
-  if (isNaN(d)) { el.textContent = ''; return; }
+   O que NÃO é alarme: planilha sem alteração. A equipe monta ~1 banco por
+   semana e às vezes acumula preenchimento por dias (informado por ele em
+   28/08/2026) — semana parada é operação normal, não falha. Antes o selo
+   ficava vermelho nessa situação dizendo "Sem atualizar há 23h", e lia como
+   sistema quebrado. A idade do dado continua visível, só que sem cor. */
 
-  const quando = d.toLocaleString('pt-BR', {
+const PONTE_URL = 'https://raw.githubusercontent.com/galpaotsi/painel-baterias/ponte/ultima-checagem.json';
+
+// Os dois lados da ponte rodam de hora em hora. Uma rodada perdida é ruído —
+// o Apps Script atrasa alguns minutos sozinho; três seguidas é padrão. Esse
+// limiar vem da cadência das máquinas, não do ritmo do laboratório.
+const HORAS_PONTE = 3;
+
+// Acima disso o selo troca "Atualizado" por "Sem alterações há X" — mesma cor,
+// só uma leitura mais honesta de dado que já dormiu.
+const HORAS_PARADO = 4;
+
+function dataDe(v) {
+  if (!v) return null;
+  const d = new Date(/Z$|[+-]\d{2}:\d{2}$/.test(v) ? v : String(v).replace(' ', 'T'));
+  return isNaN(d) ? null : d;
+}
+
+function fmtQuando(d) {
+  return d.toLocaleString('pt-BR', {
     day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
   });
+}
 
-  if (!iso) { el.textContent = `Dados de ${quando}`; return; }
+function fmtIdade(ms) {
+  const h = ms / 3600000;
+  if (h < 24) return `há ${Math.max(1, Math.floor(h))}h`;
+  const d = Math.floor(h / 24);
+  return `há ${d} dia${d > 1 ? 's' : ''}`;
+}
 
-  const horas = (Date.now() - d.getTime()) / 3600000;
-  let classe = '', prefixo = 'Dados de';
+/* Arquivo minúsculo num branch que não dispara nada. O ?t= fura o cache de
+   5 min do raw.githubusercontent. Se a rede da empresa bloquear, ou o arquivo
+   ainda não existir, volta null — e o selo cai no estado neutro em vez de
+   inventar alarme. */
+function buscarPonte() {
+  return fetch(PONTE_URL + '?t=' + Date.now(), { cache: 'no-store' })
+    .then(r => (r.ok ? r.json() : null))
+    .catch(() => null);
+}
 
-  if (horas >= HORAS_CRITICO) {
-    classe = 'critico';
-    const dias = Math.floor(horas / 24);
-    prefixo = `⚠ Sem atualizar há ${dias} dia${dias > 1 ? 's' : ''} —`;
-  } else if (horas >= HORAS_ATENCAO) {
-    classe = 'atencao';
-    prefixo = `⚠ Sem atualizar há ${Math.floor(horas)}h —`;
+function selo(el, classe, texto, dica) {
+  el.className = 'selo-atualizado' + (classe ? ' ' + classe : '');
+  el.textContent = texto;
+  el.title = dica;
+}
+
+function mostrarFrescor(ponte) {
+  const el = $('#atualizado');
+  const dGerado = dataDe(DB.geradoEm);
+  if (!dGerado) { el.textContent = ''; return; }
+
+  const quando = fmtQuando(dGerado);
+  // Versões antigas do conversor gravavam "YYYY-MM-DD HH:MM" sem fuso. Sem
+  // saber de onde a hora saiu, não dá pra calcular idade — mostra e cala.
+  const temFuso = /Z$|[+-]\d{2}:\d{2}$/.test(DB.geradoEm);
+
+  if (!ponte || !temFuso) {
+    selo(el, '', `Dados de ${quando}`,
+      'Última vez que a planilha foi convertida e publicada.');
+    return;
   }
 
-  el.className = 'selo-atualizado ' + classe;
-  el.textContent = `${prefixo} ${quando}`;
-  el.title = classe
-    ? 'A planilha deveria chegar a cada ~2h. Confira se o fluxo do Power Automate '
-      + 'está ativo e se os e-mails PAINEL-BATERIAS não caíram no spam.'
-    : 'Última vez que a planilha foi convertida e publicada.';
+  const agora = Date.now();
+  const limite = HORAS_PONTE * 3600000;
+  const dCheck = dataDe(ponte.checadoEm);
+  const dEmail = dataDe(ponte.emailEm);
+  const dMudanca = dataDe(ponte.ultimaMudanca);
+
+  // 1) O script parou de rodar (gatilho desativado, token vencido, cota).
+  if (!dCheck || agora - dCheck > limite) {
+    selo(el, 'critico',
+      dCheck ? `⚠ Sincronização parada desde ${fmtQuando(dCheck)}` : '⚠ Sincronização parada',
+      `O script que traz a planilha não roda desde então. O painel está mostrando os dados de ${quando}.`);
+    return;
+  }
+
+  // 2) O script roda, mas a planilha parou de chegar — o envio automático caiu.
+  if (!dEmail || agora - dEmail > limite) {
+    selo(el, 'critico',
+      dEmail ? `⚠ Planilha não chega desde ${fmtQuando(dEmail)}` : '⚠ Planilha não chega',
+      `O envio automático da planilha parou. O painel está mostrando os dados de ${quando}.`);
+    return;
+  }
+
+  // 3) Chegou planilha nova e o site não publicou. Meia hora de tolerância:
+  //    converter e publicar leva alguns minutos.
+  if (dMudanca && dMudanca - dGerado > 30 * 60000) {
+    selo(el, 'atencao', '⚠ Planilha nova não publicada',
+      `Chegou planilha em ${fmtQuando(dMudanca)}, mas o painel ainda mostra a de ${quando}.`);
+    return;
+  }
+
+  // 4) Corrente inteira funcionando. Dado parado aqui é operação, não falha.
+  const idade = agora - dGerado;
+  const dica = `Sincronizado às ${fmtQuando(dCheck)}. A planilha só muda quando alguém preenche o Forms — dias sem alteração são normais.`;
+  if (idade < HORAS_PARADO * 3600000) {
+    selo(el, '', `Atualizado ${quando}`, dica);
+  } else {
+    selo(el, '', `✓ Sem alterações ${fmtIdade(idade)} · ${quando}`, dica);
+  }
 }
 
 /* ============================================================
@@ -1058,7 +1131,10 @@ function mostrarFrescor() {
   }
   $('#cont-bancos').textContent = DB.registros.length;
 
-  mostrarFrescor();
+  // Pinta com o que a página já sabe e refina quando o batimento chegar: rede
+  // lenta não segura o cabeçalho, e ninguém vê alarme falso piscando.
+  mostrarFrescor(null);
+  buscarPonte().then(mostrarFrescor);
 
   popularFiltros();
   ligarEventos();

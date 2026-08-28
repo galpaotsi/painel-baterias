@@ -6,6 +6,10 @@
  * anexada, pega o anexo e envia pro GitHub. O push dispara o GitHub Actions,
  * que converte a planilha e republica o site.
  *
+ * Toda rodada grava tambem um batimento em ultima-checagem.json (branch
+ * ponte) -- e como o painel sabe que a corrente esta viva quando a planilha
+ * fica dias sem mudar.
+ *
  * POR QUE ESSE CAMINHO
  * O tenant da Icatel bloqueia link anonimo no SharePoint e no OneDrive
  * empresarial, o conector do OneDrive pessoal esta quebrado pra contas
@@ -31,10 +35,36 @@ var CAMINHO_REPO = 'dados/Controle de Bancos de Bateria Oficial.xlsx';
 var BRANCH       = 'main';
 var MAX_IDADE_H  = 48;                                       // ignora e-mail mais velho que isso
 
+// O batimento vai num branch proprio e nao no main por dois motivos: esse
+// caminho nao dispara o workflow (nao rebuilda o site nem gasta Actions) e o
+// historico do main continua legivel, sem 24 commits de robo por dia.
+var BRANCH_PONTE  = 'ponte';
+var CAMINHO_PONTE = 'ultima-checagem.json';
+
 // ---------------------------------------------------------------- principal
+/* O painel nao consegue separar "planilha sem alteracao" de "ponte morta"
+   olhando so a idade do dado -- as duas coisas chegam la iguais. Por isso
+   toda rodada, dando certo ou dando errado, grava um batimento no GitHub com
+   tres fatos: quando o script rodou, a data do e-mail mais novo que achou e
+   quando entrou planilha nova pela ultima vez. O selo do site le esse arquivo
+   e diz qual metade parou, em vez de acusar quebra quando ninguem mexeu na
+   planilha por uma semana -- o que, no laboratorio, e normal. */
 function processar() {
   var cfg = lerConfig_();
+  var estado = { emailEm: null, planilha: 'sem-email', erro: null };
 
+  try {
+    rodar_(cfg, estado);
+  } catch (e) {
+    estado.erro = String((e && e.message) || e).slice(0, 200);
+    throw e;   // continua aparecendo como falha nas Execucoes do Apps Script
+  } finally {
+    // Batimento nao derruba rodada: se ele falhar sozinho, a planilha ja foi.
+    try { baterPonte_(cfg, estado); } catch (e2) { Logger.log('Batimento falhou: %s', e2); }
+  }
+}
+
+function rodar_(cfg, estado) {
   // Busca so o que interessa: assunto exato, com anexo, recente.
   var busca = 'subject:"' + ASSUNTO + '" has:attachment newer_than:2d';
   var threads = GmailApp.search(busca, 0, 20);
@@ -64,6 +94,10 @@ function processar() {
     return;
   }
 
+  // A data do e-mail e a prova de que a outra metade da corrente (o Power
+  // Automate) continua viva. Guarda mesmo que a planilha venha igual.
+  estado.emailEm = msg.getDate();
+
   var anexo = acharAnexo_(msg);
   var bytes = anexo.getBytes();
   Logger.log('Anexo: %s (%s bytes), de %s', anexo.getName(), bytes.length, msg.getDate());
@@ -74,10 +108,14 @@ function processar() {
 
   var conteudo = Utilities.base64Encode(bytes);
   var r = enviarPraGitHub_(cfg, conteudo);
+  estado.planilha = r;
 
   if (r === 'igual') {
     Logger.log('Planilha nao mudou desde a ultima vez. Nada enviado.');
   } else {
+    // Marca quando entrou planilha nova. O selo compara isso com a data do
+    // dados.js publicado: se ficou pra tras, quem travou foi o Actions.
+    PropertiesService.getScriptProperties().setProperty('ULTIMA_MUDANCA', new Date().toISOString());
     Logger.log('Enviado pro GitHub (%s).', r);
   }
 
@@ -231,4 +269,88 @@ function testar() {
     return;
   }
   processar();
+}
+
+// ---------------------------------------------------------------- batimento
+/* Grava ultima-checagem.json no branch `ponte`:
+     { checadoEm, emailEm, ultimaMudanca, planilha, erro? }
+   Nao versiona nada util -- e sinal de vida, sobrescrito de hora em hora. */
+function baterPonte_(cfg, estado) {
+  var corpo = {
+    checadoEm: new Date().toISOString(),
+    emailEm: estado.emailEm ? new Date(estado.emailEm).toISOString() : null,
+    ultimaMudanca: PropertiesService.getScriptProperties().getProperty('ULTIMA_MUDANCA') || null,
+    planilha: estado.planilha
+  };
+  if (estado.erro) corpo.erro = estado.erro;
+
+  garantirBranch_(cfg, BRANCH_PONTE);
+
+  var url = 'https://api.github.com/repos/' + cfg.owner + '/' + cfg.repo +
+            '/contents/' + encodeURI(CAMINHO_PONTE);
+
+  var atual = UrlFetchApp.fetch(url + '?ref=' + BRANCH_PONTE, {
+    method: 'get', headers: cabecalhos_(cfg), muteHttpExceptions: true
+  });
+
+  var payload = {
+    message: 'Batimento da ponte',
+    content: Utilities.base64Encode(JSON.stringify(corpo), Utilities.Charset.UTF_8),
+    branch: BRANCH_PONTE
+  };
+  if (atual.getResponseCode() === 200) payload.sha = JSON.parse(atual.getContentText()).sha;
+
+  var resp = UrlFetchApp.fetch(url, {
+    method: 'put',
+    headers: cabecalhos_(cfg),
+    contentType: 'application/json',
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  });
+
+  var code = resp.getResponseCode();
+  if (code !== 200 && code !== 201) {
+    throw new Error('GitHub recusou o batimento (' + code + '): ' +
+                    resp.getContentText().slice(0, 300));
+  }
+  Logger.log('Batimento gravado (planilha: %s).', corpo.planilha);
+}
+
+/* Cria o branch na primeira vez, apontando pro topo do main. Ele nunca volta
+   pro main -- so serve de prateleira pro batimento. */
+function garantirBranch_(cfg, nome) {
+  var base = 'https://api.github.com/repos/' + cfg.owner + '/' + cfg.repo;
+
+  var r = UrlFetchApp.fetch(base + '/git/ref/heads/' + nome, {
+    method: 'get', headers: cabecalhos_(cfg), muteHttpExceptions: true
+  });
+  if (r.getResponseCode() === 200) return;
+  if (r.getResponseCode() !== 404) {
+    throw new Error('GitHub respondeu ' + r.getResponseCode() +
+                    ' ao consultar o branch ' + nome + ': ' + r.getContentText().slice(0, 200));
+  }
+
+  var main = UrlFetchApp.fetch(base + '/git/ref/heads/' + BRANCH, {
+    method: 'get', headers: cabecalhos_(cfg), muteHttpExceptions: true
+  });
+  if (main.getResponseCode() !== 200) {
+    throw new Error('Nao consegui ler o branch ' + BRANCH + ' pra criar o ' + nome +
+                    ' (' + main.getResponseCode() + ').');
+  }
+
+  var criar = UrlFetchApp.fetch(base + '/git/refs', {
+    method: 'post',
+    headers: cabecalhos_(cfg),
+    contentType: 'application/json',
+    payload: JSON.stringify({
+      ref: 'refs/heads/' + nome,
+      sha: JSON.parse(main.getContentText()).object.sha
+    }),
+    muteHttpExceptions: true
+  });
+  if (criar.getResponseCode() !== 201) {
+    throw new Error('Nao consegui criar o branch ' + nome + ' (' + criar.getResponseCode() +
+                    '): ' + criar.getContentText().slice(0, 200));
+  }
+  Logger.log('Branch %s criado.', nome);
 }

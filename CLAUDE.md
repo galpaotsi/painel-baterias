@@ -64,6 +64,43 @@ Nada trava por volume. O que cresce, e quanto:
   "~10 de 2.000/mês" escrito no workflow é a cota de repo privado). E o
   workflow tem `contents: read` — não commita nada de volta.
 
+### O selo do cabeçalho mede a corrente, não a idade do dado (28/08/2026)
+
+Em 28/08 o painel amanheceu com **"⚠ Sem atualizar há 23h"** em amarelo, e não
+havia nada quebrado: as Execuções do Apps Script estavam de hora em hora, todas
+"Concluído", e o `enviarPraGitHub_` só commita quando os bytes mudam. Ninguém
+tinha mexido na planilha desde a noite anterior — o alarme era do desenho, não
+da corrente.
+
+A causa é o selo medir **idade do dado**, que num laboratório onde se monta ~1
+banco por semana não diz nada sobre saúde. Agora ele mede a corrente:
+
+- toda rodada do Apps Script grava `ultima-checagem.json` no branch **`ponte`**,
+  com `checadoEm`, `emailEm` (data do e-mail mais novo que achou),
+  `ultimaMudanca` (última vez que entrou planilha nova) e `planilha`
+- o branch é separado de propósito: fica fora do `paths` do workflow, então não
+  rebuilda o site nem gasta Actions, e o histórico do `main` não leva 24 commits
+  de robô por dia. O `garantirBranch_` cria o branch sozinho na primeira rodada
+- a página lê pelo `raw.githubusercontent` (manda `Access-Control-Allow-Origin: *`
+  e aceita `?t=` como cache-buster, checado em 28/08). Se o arquivo não existir
+  ou a rede da empresa bloquear, o selo cai no estado neutro — **nunca inventa
+  alarme por falta de resposta**
+
+Os cinco estados, e o que cada um acusa:
+
+| Selo | O que quebrou |
+|---|---|
+| `Atualizado 28/08, 19:55` | nada, dado fresco |
+| `✓ Sem alterações há 23h · 27/08, 20:08` | nada — ninguém preencheu o Forms |
+| `⚠ Sincronização parada desde …` | o Apps Script não roda (gatilho, token, cota) |
+| `⚠ Planilha não chega desde …` | o Power Automate parou de mandar o e-mail |
+| `⚠ Planilha nova não publicada` | entrou planilha e o Actions não publicou |
+
+**O limiar de 3h é três rodadas perdidas.** Vem da cadência das máquinas — as
+duas metades rodam de hora em hora —, não do ritmo do laboratório: uma rodada
+perdida é ruído, três seguidas é padrão. Os nove estados foram conferidos no
+Edge headless com batimento de mentira, pelo mesmo método do `testar-painel.ps1`.
+
 ---
 
 ## Regras da operação (vieram dele, não deduzir)
@@ -121,6 +158,15 @@ correndo, que é o estoque; isso não mudou.
 Uma ressalva que ele deve saber: banco **em estoque nunca tem TAG** (é a
 definição). Por isso a lista de validade identifica pelo **nº de série**, não
 pela TAG — uma coluna de TAG ali seria vazia em todas as linhas.
+
+**Ritmo real do laboratório (dele, 28/08/2026): planilha parada não é falha.**
+Monta-se ~1 banco por semana hoje — já foram 3 a 4 implantações por semana numa
+época, mas a maior parte da frota já está em campo. Banco só é montado quando há
+demanda de implantação; sem demanda, ficam 2 a 3 prontos no estoque. E o
+preenchimento do Forms às vezes é acumulado: uma semana inteira pode passar e as
+alterações entrarem todas de uma vez. Nada disso é regra fechada — foi como ele
+descreveu o momento. Consequência de projeto: **nenhum alarme pode nascer da
+idade do dado**, só da corrente parar.
 
 ### Como isso foi testado (vale repetir quando mexer nas regras)
 
