@@ -1050,7 +1050,7 @@ function buscarPonte() {
     .catch(() => null);
 }
 
-function selo(el, classe, texto, dica) {
+function pintarSelo(el, classe, texto, dica) {
   el.className = 'selo-atualizado' + (classe ? ' ' + classe : '');
   el.textContent = texto;
   el.title = dica;
@@ -1067,7 +1067,7 @@ function mostrarFrescor(ponte) {
   const temFuso = /Z$|[+-]\d{2}:\d{2}$/.test(DB.geradoEm);
 
   if (!ponte || !temFuso) {
-    selo(el, '', `Dados de ${quando}`,
+    pintarSelo(el, '', `Dados de ${quando}`,
       'Última vez que a planilha foi convertida e publicada.');
     return;
   }
@@ -1080,7 +1080,7 @@ function mostrarFrescor(ponte) {
 
   // 1) O script parou de rodar (gatilho desativado, token vencido, cota).
   if (!dCheck || agora - dCheck > limite) {
-    selo(el, 'critico',
+    pintarSelo(el, 'critico',
       dCheck ? `⚠ Sincronização parada desde ${fmtQuando(dCheck)}` : '⚠ Sincronização parada',
       `O script que traz a planilha não roda desde então. O painel está mostrando os dados de ${quando}.`);
     return;
@@ -1088,7 +1088,7 @@ function mostrarFrescor(ponte) {
 
   // 2) O script roda, mas a planilha parou de chegar — o envio automático caiu.
   if (!dEmail || agora - dEmail > limite) {
-    selo(el, 'critico',
+    pintarSelo(el, 'critico',
       dEmail ? `⚠ Planilha não chega desde ${fmtQuando(dEmail)}` : '⚠ Planilha não chega',
       `O envio automático da planilha parou. O painel está mostrando os dados de ${quando}.`);
     return;
@@ -1097,7 +1097,7 @@ function mostrarFrescor(ponte) {
   // 3) Chegou planilha nova e o site não publicou. Meia hora de tolerância:
   //    converter e publicar leva alguns minutos.
   if (dMudanca && dMudanca - dGerado > 30 * 60000) {
-    selo(el, 'atencao', '⚠ Planilha nova não publicada',
+    pintarSelo(el, 'atencao', '⚠ Planilha nova não publicada',
       `Chegou planilha em ${fmtQuando(dMudanca)}, mas o painel ainda mostra a de ${quando}.`);
     return;
   }
@@ -1106,9 +1106,9 @@ function mostrarFrescor(ponte) {
   const idade = agora - dGerado;
   const dica = `Sincronizado às ${fmtQuando(dCheck)}. A planilha só muda quando alguém preenche o Forms — dias sem alteração são normais.`;
   if (idade < HORAS_PARADO * 3600000) {
-    selo(el, '', `Atualizado ${quando}`, dica);
+    pintarSelo(el, '', `Atualizado ${quando}`, dica);
   } else {
-    selo(el, '', `✓ Sem alterações ${fmtIdade(idade)} · ${quando}`, dica);
+    pintarSelo(el, '', `✓ Sem alterações ${fmtIdade(idade)} · ${quando}`, dica);
   }
 }
 
